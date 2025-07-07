@@ -18,8 +18,8 @@ import openpi.models.pi0 as pi0
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
+import openpi.policies.arx_single_arm_policy as arx_single_arm_policy
 import openpi.policies.droid_policy as droid_policy
-import openpi.policies.galaxea_policy as galaxea_policy
 import openpi.policies.libero_policy as libero_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
@@ -328,7 +328,7 @@ class LeRobotLiberoDataConfig(DataConfigFactory):
 
 
 @dataclasses.dataclass(frozen=True)
-class LeRobotGalaxeaDataConfig(DataConfigFactory):
+class LeRobotArxR5DataConfig(DataConfigFactory):
     """
     This config is used to configure transforms that are applied at various parts of the data pipeline.
     For your own dataset, you can copy this class and modify the transforms to match your dataset based on the
@@ -367,9 +367,11 @@ class LeRobotGalaxeaDataConfig(DataConfigFactory):
         # replace the transforms below with your own.
         data_transforms = _transforms.Group(
             inputs=[
-                galaxea_policy.GalaxeaInputs(action_dim=model_config.action_dim, model_type=model_config.model_type)
+                arx_single_arm_policy.ArxR5Inputs(
+                    action_dim=model_config.action_dim, model_type=model_config.model_type
+                )
             ],
-            outputs=[galaxea_policy.GalaxeaOutputs()],
+            outputs=[arx_single_arm_policy.ArxR5Outputs()],
         )
 
         # One additional data transform: pi0 models are trained on delta actions (relative to the first
@@ -659,15 +661,15 @@ _CONFIGS = [
         ema_decay=None,
     ),
     TrainConfig(
-        name="pi0_galaxea_low_mem_finetune",
+        name="pi0_arx_single_low_mem_finetune",
         # Here is an example of loading a pi0 model for LoRA fine-tuning.
         model=pi0.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
-        data=LeRobotGalaxeaDataConfig(
-            repo_id="kelvinzhaozg/galaxea_single_arm_block_pick_and_place",
+        data=LeRobotArxR5DataConfig(
+            repo_id="kelvinzhaozg/arx_single_arm_block_pick_and_place",
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
-        num_train_steps=10000,
+        num_train_steps=20000,
         # The freeze filter defines which parameters should be frozen during training.
         # We have a convenience function in the model config that returns the default freeze filter
         # for the given model config for LoRA finetuning. Just make sure it matches the model config

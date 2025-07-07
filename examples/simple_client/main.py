@@ -21,6 +21,7 @@ class EnvMode(enum.Enum):
     ALOHA_SIM = "aloha_sim"
     DROID = "droid"
     LIBERO = "libero"
+    ARX_SINGLE = "arx_single"
 
 
 @dataclasses.dataclass
@@ -120,6 +121,7 @@ def main(args: Args) -> None:
         EnvMode.ALOHA_SIM: _random_observation_aloha,
         EnvMode.DROID: _random_observation_droid,
         EnvMode.LIBERO: _random_observation_libero,
+        EnvMode.ARX_SINGLE: _random_observation_arx_single,  # Placeholder for ARX_SINGLE
     }[args.env]
 
     policy = _websocket_client_policy.WebsocketClientPolicy(
@@ -178,6 +180,15 @@ def _random_observation_libero() -> dict:
         "observation/state": np.random.rand(8),
         "observation/image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
         "observation/wrist_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "prompt": "do something",
+    }
+
+
+def _random_observation_arx_single() -> dict:
+    return {
+        "state": np.random.rand(7),
+        "image": np.random.randint(256, size=(240, 424, 3), dtype=np.uint8),
+        "wrist_image": np.random.randint(256, size=(240, 424, 3), dtype=np.uint8),
         "prompt": "do something",
     }
 
