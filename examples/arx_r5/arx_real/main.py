@@ -8,10 +8,10 @@ from openpi_client.runtime import runtime as _runtime
 from openpi_client.runtime.agents import policy_agent as _policy_agent
 import tyro
 
-from examples.arx_real import env as _env
-from examples.arx_real.robot_utils import DEFAULT_BASE_CAM_SERIAL
-from examples.arx_real.robot_utils import DEFAULT_CAN_PORTS
-from examples.arx_real.robot_utils import DEFAULT_RIGHT_WRIST_CAM_SERIAL
+from examples.arx_r5.arx_real import env as _env
+from examples.arx_r5.robot_utils import DEFAULT_BASE_CAM_SERIAL
+from examples.arx_r5.robot_utils import DEFAULT_CAN_PORTS
+from examples.arx_r5.robot_utils import DEFAULT_RIGHT_WRIST_CAM_SERIAL
 
 
 @dataclasses.dataclass
@@ -21,10 +21,11 @@ class Args:
     host: str = "0.0.0.0"
     port: int = 8000
 
-    action_horizon: int = 25
+    action_horizon: int = 50
+    step_reset_value: int = 0
 
     num_episodes: int = 1
-    max_episode_steps: int = 1000
+    max_episode_steps: int = 10000
 
     # Robot specific arguments
     can_port: str = DEFAULT_CAN_PORTS["right_arm"]
@@ -48,8 +49,7 @@ def main(args: Args) -> None:
         ),
         agent=_policy_agent.PolicyAgent(
             policy=action_chunk_broker.ActionChunkBroker(
-                policy=ws_client_policy,
-                action_horizon=args.action_horizon,
+                policy=ws_client_policy, action_horizon=args.action_horizon, step_reset_value=args.step_reset_value
             )
         ),
         subscribers=[],

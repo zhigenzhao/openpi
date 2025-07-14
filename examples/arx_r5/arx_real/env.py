@@ -5,7 +5,7 @@ from openpi_client import image_tools
 from openpi_client.runtime import environment as _environment
 from typing_extensions import override
 
-from examples.arx_real import real_env as _real_env
+from examples.arx_r5.arx_real import real_env as _real_env
 
 
 class ARXRealEnvironment(_environment.Environment):

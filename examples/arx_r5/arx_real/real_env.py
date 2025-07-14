@@ -5,12 +5,13 @@ from typing import List, Optional
 import dm_env
 import numpy as np
 
-from examples.arx_real.robot_utils import DEFAULT_BASE_CAM_SERIAL
-from examples.arx_real.robot_utils import DEFAULT_CAN_PORTS
-from examples.arx_real.robot_utils import DEFAULT_GRIPPER_OPEN
-from examples.arx_real.robot_utils import DEFAULT_RIGHT_WRIST_CAM_SERIAL
-from examples.arx_real.robot_utils import ARXR5Interface
-from examples.arx_real.robot_utils import RealSenseCameraInterface
+from examples.arx_r5.robot_utils import DEFAULT_BASE_CAM_SERIAL
+from examples.arx_r5.robot_utils import DEFAULT_CAN_PORTS
+from examples.arx_r5.robot_utils import DEFAULT_GRIPPER_CLOSE
+from examples.arx_r5.robot_utils import DEFAULT_GRIPPER_OPEN
+from examples.arx_r5.robot_utils import DEFAULT_RIGHT_WRIST_CAM_SERIAL
+from examples.arx_r5.robot_utils import ARXR5Interface
+from examples.arx_r5.robot_utils import RealSenseCameraInterface
 
 DT = 0.02  # Control frequency
 
@@ -86,7 +87,10 @@ class RealEnv:
 
         return images
 
-    def set_gripper_pose(self, gripper_desired_pos):
+    def set_gripper_pose(self, gripper_desired_pos_normalized: float):
+        gripper_desired_pos = (
+            gripper_desired_pos_normalized * (DEFAULT_GRIPPER_CLOSE - DEFAULT_GRIPPER_OPEN)
+        ) + DEFAULT_GRIPPER_OPEN
         self.robot.set_catch_pos(gripper_desired_pos)
 
     def _reset_joints(self):
@@ -131,11 +135,11 @@ class RealEnv:
 
         # Split action into arm and gripper components
         arm_action = action[:6]
-        gripper_action = action[6]
+        gripper_action_normalized = action[6]
 
         # Send commands to robot
         self.robot.set_joint_positions(arm_action)
-        self.set_gripper_pose(gripper_action)
+        self.set_gripper_pose(gripper_action_normalized)
 
         # Wait for control step
         time.sleep(DT)

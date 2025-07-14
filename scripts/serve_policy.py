@@ -76,7 +76,7 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
     ),
     EnvMode.ARX_SINGLE: Checkpoint(
         config="pi0_arx_single_low_mem_finetune",
-        dir="checkpoints/pi0_arx_single_low_mem_finetune/exp0/24999",
+        dir="checkpoints/pi0_arx_single_low_mem_finetune/exp_gripper_normalized/19000",
     ),
 }
 

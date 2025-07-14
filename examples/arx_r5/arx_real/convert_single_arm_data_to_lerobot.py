@@ -71,9 +71,10 @@ def populate_dataset(dataset: LeRobotDataset, pkl_files: list[Path]) -> LeRobotD
                 continue
 
             state = np.array(step_data["qpos"][arm]).astype(np.float32)
-            # gripper_state = state[-1]
-            # gripper_target = 4.9 if gripper_state > 4.89 else 0.0
-            gripper_target = step_data["gripper_target"][arm]["joint7"]
+            # convert gripper state to 0 open and 1 closed
+            gripper_target = 0.0 if state[-1] > 4.89 else 1.0
+            state[-1] = 1.0 - state[-1] / 4.9
+            # gripper_target = step_data["gripper_target"][arm]["joint7"]
             action = np.concatenate([step_data["qpos_des"][arm], [gripper_target]]).astype(np.float32)
             # print(f"gripper target dict: {step_data['gripper_target'][arm]}")
 
