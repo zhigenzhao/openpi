@@ -636,6 +636,7 @@ _CONFIGS = [
         data=LeRobotAlohaDataConfig(
             assets=AssetsConfig(asset_id="trossen"),
         ),
+        policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
     ),
     TrainConfig(
         name="pi0_aloha_towel",
@@ -644,6 +645,7 @@ _CONFIGS = [
             assets=AssetsConfig(asset_id="trossen"),
             default_prompt="fold the towel",
         ),
+        policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
     ),
     TrainConfig(
         name="pi0_aloha_tupperware",
@@ -652,6 +654,7 @@ _CONFIGS = [
             assets=AssetsConfig(asset_id="trossen"),
             default_prompt="open the tupperware and put the food on the plate",
         ),
+        policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
     ),
     #
     # Inference DROID configs.
