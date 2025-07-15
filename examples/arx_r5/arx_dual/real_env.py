@@ -154,6 +154,8 @@ class RealEnv:
         # Split action into arm and gripper components
         left_arm_action = action[:6]
         right_arm_action = action[7:13]
+        # left_gripper_action_normalized = 0 if action[6] < 0.99 else 1
+        # right_gripper_action_normalized = 0 if action[13] < 0.99 else 1
         left_gripper_action_normalized = action[6]
         right_gripper_action_normalized = action[13]
 

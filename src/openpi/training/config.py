@@ -766,11 +766,11 @@ _CONFIGS = [
         # Here is an example of loading a pi0 model for LoRA fine-tuning.
         model=pi0.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
         data=LeRobotDualArxR5DataConfig(
-            repo_id="kelvinzhaozg/arx_dual_arm_carpet_fold_long_edge",
+            repo_id="kelvinzhaozg/arx_dual_arm_carpet_fold_long_edge_binary_gripper_action_video",
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
-        num_train_steps=40000,
+        num_train_steps=30000,
         batch_size=16,
         # The freeze filter defines which parameters should be frozen during training.
         # We have a convenience function in the model config that returns the default freeze filter

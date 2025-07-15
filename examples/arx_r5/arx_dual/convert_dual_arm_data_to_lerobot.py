@@ -34,17 +34,17 @@ def create_empty_dataset(
         fps=50,
         features={
             "base_image": {
-                "dtype": "image",
+                "dtype": "video",
                 "shape": (240, 424, 3),
                 "names": ["height", "width", "channel"],
             },
             "right_wrist_image": {
-                "dtype": "image",
+                "dtype": "video",
                 "shape": (240, 424, 3),
                 "names": ["height", "width", "channel"],
             },
             "left_wrist_image": {
-                "dtype": "image",
+                "dtype": "video",
                 "shape": (240, 424, 3),
                 "names": ["height", "width", "channel"],
             },
@@ -73,12 +73,14 @@ def populate_dataset(dataset: LeRobotDataset, pkl_files: list[Path]) -> LeRobotD
 
         for step_data in episode_data:
             state = np.concatenate([step_data["qpos"]["left_arm"], step_data["qpos"]["right_arm"]]).astype(np.float32)
+            left_gripper_target = 0.0 if state[6] > 4.89 else 1.0
+            right_gripper_target = 0.0 if state[13] > 4.89 else 1.0
             # convert gripper state to 0 open and 1 closed
             state[6] = 1.0 - state[6] / 4.9
             state[13] = 1.0 - state[13] / 4.9
             # gripper_target = step_data["gripper_target"][arm]["joint7"]
-            left_gripper_target = 1.0 - step_data["gripper_target"]["left_arm"]["left_joint7"] / 4.9
-            right_gripper_target = 1.0 - step_data["gripper_target"]["right_arm"]["right_joint7"] / 4.9
+            # left_gripper_target = 1.0 - step_data["gripper_target"]["left_arm"]["left_joint7"] / 4.9
+            # right_gripper_target = 1.0 - step_data["gripper_target"]["right_arm"]["right_joint7"] / 4.9
             action = np.concatenate(
                 [
                     step_data["qpos_des"]["left_arm"],
@@ -104,7 +106,7 @@ def populate_dataset(dataset: LeRobotDataset, pkl_files: list[Path]) -> LeRobotD
 
 def port_arx(
     data_dir: Path,
-    repo_id: str = "kelvinzhaozg/arx_dual_arm_carpet_fold_long_edge",
+    repo_id: str = "kelvinzhaozg/arx_dual_arm_carpet_fold_long_edge_binary_gripper_action_video",
     root_dir: str = None,
     *,
     push_to_hub: bool = False,
