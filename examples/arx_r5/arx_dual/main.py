@@ -26,7 +26,7 @@ class Args:
     step_reset_value: int = 0
 
     num_episodes: int = 1
-    max_episode_steps: int = 5000
+    max_episode_steps: int = 10000000
 
     # Robot specific arguments
     can_port_right: str = DEFAULT_CAN_PORTS["right_arm"]

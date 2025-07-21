@@ -41,10 +41,6 @@ class RealEnv:
         self.can_port_left = can_port_left
         self.can_port_right = can_port_right
 
-        # Initialize the ARX R5 interface
-        self.robot_left = ARXR5Interface(can_port=can_port_left, dt=DT)
-        self.robot_right = ARXR5Interface(can_port=can_port_right, dt=DT)
-
         # Initialize camera interface for single arm (right wrist and top cameras)
         self.camera_interface = RealSenseCameraInterface(
             width=camera_width,
@@ -55,18 +51,19 @@ class RealEnv:
         )
         self.camera_interface.start()
 
-        self.setup_robot()
+        # Initialize the ARX R5 interface
+        self.robot_left = ARXR5Interface(can_port=can_port_left, dt=DT)
+        self.robot_right = ARXR5Interface(can_port=can_port_right, dt=DT)
 
-    def setup_robot(self):
-        """Initialize the robot to a ready state"""
-        self.robot_left.go_home()
-        self.robot_right.go_home()
-        time.sleep(1.0)
+        self.reset()
+        time.sleep(1.0)  # Allow time for the robot to initialize
 
     def get_qpos(self):
         """Get current joint positions including gripper"""
         left_qpos = np.array(self.robot_left.get_joint_positions(), dtype=np.float32)
+        left_qpos[6] = 1 - left_qpos[6] / (DEFAULT_GRIPPER_OPEN - DEFAULT_GRIPPER_CLOSE)
         right_qpos = np.array(self.robot_right.get_joint_positions(), dtype=np.float32)
+        right_qpos[6] = 1 - right_qpos[6] / (DEFAULT_GRIPPER_OPEN - DEFAULT_GRIPPER_CLOSE)
         return np.concatenate([left_qpos, right_qpos])
 
     def get_qvel(self):
@@ -149,7 +146,7 @@ class RealEnv:
         if len(action) != 14:
             raise ValueError(f"Action must have 14 elements (12 joints + 2 grippers), got {len(action)}")
 
-        print(f"Action received: {action}")
+        # print(f"Action received: {action}")
 
         # Split action into arm and gripper components
         left_arm_action = action[:6]

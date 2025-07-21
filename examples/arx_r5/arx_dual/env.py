@@ -40,7 +40,7 @@ class ARXRealEnvironment(_environment.Environment):
             "base_image": obs["images"]["base"],
             "right_wrist_image": obs["images"]["right_wrist"],
             "left_wrist_image": obs["images"]["left_wrist"],
-            "prompt": "fold the carpet in half along the long edge",
+            "prompt": "fold the carpet again along the long edge",
         }
 
     @override

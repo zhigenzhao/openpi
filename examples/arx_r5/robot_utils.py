@@ -24,7 +24,7 @@ DEFAULT_CAN_PORTS = {
     "right_arm": "can3",
 }
 # Default reset position for the ARX R5 arm
-DEFAULT_GRIPPER_OPEN = 4.9
+DEFAULT_GRIPPER_OPEN = 4.8
 DEFAULT_GRIPPER_CLOSE = 0.0
 
 
@@ -134,6 +134,7 @@ class ARXR5Interface:
 
     def set_catch_pos(self, pos: float):
         self.arm.set_catch(pos)
+        self.arm.set_arm_status(5)
 
     def get_joint_positions(self, joint_names: Optional[Union[str, List[str]]] = None) -> Union[float, List[float]]:
         """
