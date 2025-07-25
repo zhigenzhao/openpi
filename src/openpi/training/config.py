@@ -21,6 +21,7 @@ import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.arx_dual_arm_policy as arx_dual_arm_policy
 import openpi.policies.arx_single_arm_policy as arx_single_arm_policy
 import openpi.policies.droid_policy as droid_policy
+import openpi.policies.galaxea_r1_lite_policy as galaxea_r1_lite_policy
 import openpi.policies.libero_policy as libero_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
@@ -484,6 +485,68 @@ class LeRobotDualArxR5DataConfig(DataConfigFactory):
 
 
 @dataclasses.dataclass(frozen=True)
+class LeRobotR1LiteDataConfig(DataConfigFactory):
+    """
+    This config is used to configure transforms that are applied at various parts of the data pipeline
+    for the Galaxea R1 Lite humanoid robot.
+    """
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # The repack transform is *only* applied to the data coming from the dataset,
+        # and *not* during inference. We can use it to make inputs from the dataset look
+        # as close as possible to those coming from the inference environment (e.g. match the keys).
+        # Below, we match the keys in the dataset (which we defined in the data conversion script) to
+        # the keys we use in our inference pipeline.
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "base_image": "base_image",
+                        "left_wrist_image": "left_wrist_image",
+                        "right_wrist_image": "right_wrist_image",
+                        "state": "state",
+                        "actions": "actions",
+                        "task": "task",
+                    }
+                )
+            ]
+        )
+
+        # The data transforms are applied to the data coming from the dataset *and* during inference.
+        # Below, we define the transforms for data going into the model (``inputs``) and the transforms
+        # for data coming out of the model (``outputs``) (the latter is only used during inference).
+        data_transforms = _transforms.Group(
+            inputs=[
+                galaxea_r1_lite_policy.GalaxeaR1LiteInputs(
+                    action_dim=model_config.action_dim, model_type=model_config.model_type
+                )
+            ],
+            outputs=[galaxea_r1_lite_policy.GalaxeaR1LiteOutputs()],
+        )
+
+        # R1 Lite actions are absolute positions, so we convert to delta actions for training
+        # R1 Lite has: left_arm(6) + left_gripper(1) + right_arm(6) + right_gripper(1) + chassis(3) = 17 actions
+        # We apply delta conversion to arms and keep grippers + chassis absolute
+        delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -4)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        model_transforms = ModelTransformFactory()(model_config)
+
+        # We return all data transforms for training and inference.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
 class RLDSDroidDataConfig(DataConfigFactory):
     """
     Config for training on DROID, using RLDS data format (for efficient training on larger datasets).
@@ -843,6 +906,21 @@ _CONFIGS = [
             action_dim=7, action_horizon=10, max_token_len=180, paligemma_variant="gemma_2b_lora"
         ).get_freeze_filter(),
         # Turn off EMA for LoRA finetuning.
+        ema_decay=None,
+    ),
+    TrainConfig(
+        name="pi0_r1_lite_low_mem_finetune",
+        model=pi0.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
+        data=LeRobotR1LiteDataConfig(
+            repo_id="kelvinzhaozg/r1_lite_drive_to_table",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
+        num_train_steps=30_000,
+        batch_size=16,
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter(),
         ema_decay=None,
     ),
     #
