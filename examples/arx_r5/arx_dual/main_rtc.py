@@ -23,6 +23,8 @@ class Args:
     port: int = 8000
 
     action_horizon: int = 50
+    execution_horizon: int = 30
+    inference_delay: int = 10
 
     num_episodes: int = 1
     max_episode_steps: int = 10000000
@@ -50,7 +52,12 @@ def main(args: Args) -> None:
             camera_serial_numbers=args.camera_serials,
         ),
         agent=_policy_agent.PolicyAgent(
-            policy=action_chunk_broker.ActionChunkBroker(policy=ws_client_policy, action_horizon=args.action_horizon)
+            policy=action_chunk_broker.RTCActionChunkBroker(
+                policy=ws_client_policy,
+                action_horizon=args.action_horizon,
+                execution_horizon=args.execution_horizon,
+                inference_delay=args.inference_delay,
+            )
         ),
         subscribers=[],
         max_hz=50,  # Set a safe frequency for the real robot

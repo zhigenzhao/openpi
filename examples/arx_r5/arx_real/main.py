@@ -22,7 +22,6 @@ class Args:
     port: int = 8000
 
     action_horizon: int = 50
-    step_reset_value: int = 0
 
     num_episodes: int = 1
     max_episode_steps: int = 10000
@@ -48,9 +47,7 @@ def main(args: Args) -> None:
             camera_serial_numbers=args.camera_serials,
         ),
         agent=_policy_agent.PolicyAgent(
-            policy=action_chunk_broker.ActionChunkBroker(
-                policy=ws_client_policy, action_horizon=args.action_horizon, step_reset_value=args.step_reset_value
-            )
+            policy=action_chunk_broker.ActionChunkBroker(policy=ws_client_policy, action_horizon=args.action_horizon)
         ),
         subscribers=[],
         max_hz=50,  # Set a safe frequency for the real robot

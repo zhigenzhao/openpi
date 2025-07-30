@@ -19,6 +19,7 @@ class EnvMode(enum.Enum):
     DROID = "droid"
     LIBERO = "libero"
     ARX_SINGLE = "arx_single"
+    ARX_DUAL_RTC = "arx_dual_rtc"
 
 
 @dataclasses.dataclass
@@ -29,6 +30,21 @@ class Checkpoint:
     config: str
     # Checkpoint directory (e.g., "checkpoints/pi0_aloha_sim/exp/10000").
     dir: str
+
+
+@dataclasses.dataclass
+class RTCCheckpoint:
+    """Load a policy from a trained checkpoint."""
+
+    # Training config name (e.g., "pi0_aloha_sim").
+    config: str
+    # Checkpoint directory (e.g., "checkpoints/pi0_aloha_sim/exp/10000").
+    dir: str
+
+    action_horizon: int = 50
+    prefix_attention_horizon: int = 25
+    inference_delay: int = 5
+    max_guidance_weight: float = 1.0
 
 
 @dataclasses.dataclass
@@ -53,7 +69,7 @@ class Args:
     record: bool = False
 
     # Specifies how to load the policy. If not provided, the default policy for the environment will be used.
-    policy: Checkpoint | Default = dataclasses.field(default_factory=Default)
+    policy: Checkpoint | RTCCheckpoint | Default = dataclasses.field(default_factory=Default)
 
 
 # Default checkpoints that should be used for each environment.
@@ -78,6 +94,14 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
         config="pi0_arx_single_low_mem_finetune",
         dir="checkpoints/pi0_arx_single_low_mem_finetune/exp_gripper_normalized/19000",
     ),
+    EnvMode.ARX_DUAL_RTC: RTCCheckpoint(
+        config="pi0_arx_dual_low_mem_finetune_multi_step",
+        dir="checkpoints/pi0_arx_dual_low_mem_finetune_multi_step/exp_carpet_fold_0718/79999",
+        action_horizon=50,
+        prefix_attention_horizon=30,
+        inference_delay=10,
+        max_guidance_weight=1.0,
+    ),
 }
 
 
@@ -99,6 +123,16 @@ def create_policy(args: Args) -> _policy.Policy:
             )
         case Default():
             return create_default_policy(args.env, default_prompt=args.default_prompt)
+        case RTCCheckpoint():
+            return _policy_config.create_trained_rtc_policy(
+                _config.get_config(args.policy.config),
+                args.policy.dir,
+                default_prompt=args.default_prompt,
+                action_horizon=args.policy.action_horizon,
+                prefix_attention_horizon=args.policy.prefix_attention_horizon,
+                inference_delay=args.policy.inference_delay,
+                max_guidance_weight=args.policy.max_guidance_weight,
+            )
 
 
 def main(args: Args) -> None:
