@@ -100,7 +100,7 @@ class RTCPolicy(BasePolicy):
 
     def _warmup_jit_functions(self, obs_dict: dict):
         """Pre-compile JIT functions using the first real observation to avoid compilation delay."""
-        print("[RTCPolicy] Pre-compiling JIT functions with first observation...")
+        logging.info("[RTCPolicy] Pre-compiling JIT functions with first observation...")
 
         # Use real observation structure but create a clean copy for warmup
         warmup_obs = {}
@@ -116,12 +116,15 @@ class RTCPolicy(BasePolicy):
 
         # Warmup sample_actions (regular inference)
         dummy_rng = jax.random.key(42)
-        print("[RTCPolicy] Warming up sample_actions...")
+        logging.info("[RTCPolicy] Warming up sample_actions...")
         _ = self._sample_actions(dummy_rng, warmup_obs_jax, **self._sample_kwargs)
 
         # Warmup sample_actions_rtc (RTC inference)
-        print("[RTCPolicy] Warming up sample_actions_rtc...")
-        dummy_prefix_actions = jnp.zeros((50, self._model.action_dim))  # Full horizon dummy prefix
+        logging.info("[RTCPolicy] Warming up sample_actions_rtc...")
+        print(
+            f"inference_delay: {self.inference_delay}, prefix_attention_horizon: {self.prefix_attention_horizon}, max_guidance_weight: {self.max_guidance_weight}"
+        )
+        dummy_prefix_actions = jnp.zeros((self.action_horizon, 14))  # Full horizon dummy prefix
         _ = self._sample_actions_rtc(
             dummy_rng,
             warmup_obs_jax,
@@ -131,7 +134,7 @@ class RTCPolicy(BasePolicy):
             self.max_guidance_weight,
             **self._sample_kwargs,
         )
-        print("[RTCPolicy] JIT warmup complete!")
+        logging.info("[RTCPolicy] JIT warmup complete!")
         self._jit_warmed_up = True
 
     @override
@@ -143,12 +146,13 @@ class RTCPolicy(BasePolicy):
         # Extract RTC-specific parameters from obs
         if obs.get("prefix_actions") is not None:
             prefix_actions_np = obs["prefix_actions"]
+            print(f"prefix_actions_np: {prefix_actions_np}")
             # Pad prefix_actions to full action_horizon
             pad_length = self.action_horizon - prefix_actions_np.shape[0]
             padding = jnp.zeros((pad_length, prefix_actions_np.shape[1]))
             prefix_actions_jax = jnp.concatenate([jnp.asarray(prefix_actions_np), padding], axis=0)
             assert self.prefix_attention_horizon == prefix_actions_np.shape[0]
-            assert self.inference_delay == obs.get("inference_delay", 0)
+            assert self.inference_delay == obs.get("inference_delay")
             self._enable_rtc = True
         else:
             prefix_actions_jax = None
@@ -199,7 +203,7 @@ class RTCPolicy(BasePolicy):
         outputs["policy_timing"] = {
             "infer_ms": model_time * 1000,
         }
-        print(f"[RTC] Inference completed in {model_time * 1000:.2f} ms, outputs: {outputs}")
+        logging.info(f"[RTC] Inference completed in {model_time * 1000:.2f} ms")
         return outputs
 
     @property

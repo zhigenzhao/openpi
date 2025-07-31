@@ -122,7 +122,7 @@ def create_trained_rtc_policy(
         if data_config.asset_id is None:
             raise ValueError("Asset id is required to load norm stats.")
         norm_stats = _checkpoints.load_norm_stats(checkpoint_dir / "assets", data_config.asset_id)
-
+    print(f"input data transforms: {data_config.data_transforms.inputs}")
     return _policy.RTCPolicy(
         model,
         transforms=[
@@ -140,4 +140,8 @@ def create_trained_rtc_policy(
         ],
         sample_kwargs=sample_kwargs,
         metadata=train_config.policy_metadata,
+        action_horizon=action_horizon,
+        prefix_attention_horizon=prefix_attention_horizon,
+        inference_delay=inference_delay,
+        max_guidance_weight=max_guidance_weight,
     )

@@ -32,7 +32,13 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
             try:
                 headers = {"Authorization": f"Api-Key {self._api_key}"} if self._api_key else None
                 conn = websockets.sync.client.connect(
-                    self._uri, compression=None, max_size=None, additional_headers=headers
+                    self._uri, 
+                    compression=None, 
+                    max_size=None, 
+                    additional_headers=headers,
+                    ping_timeout=60,  # 60 second ping timeout
+                    ping_interval=30,  # ping every 30 seconds
+                    close_timeout=30   # 30 second close timeout
                 )
                 metadata = msgpack_numpy.unpackb(conn.recv())
                 return conn, metadata
@@ -42,13 +48,24 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
 
     @override
     def infer(self, obs: Dict) -> Dict:  # noqa: UP006
-        data = self._packer.pack(obs)
-        self._ws.send(data)
-        response = self._ws.recv()
-        if isinstance(response, str):
-            # we're expecting bytes; if the server sends a string, it's an error.
-            raise RuntimeError(f"Error in inference server:\n{response}")
-        return msgpack_numpy.unpackb(response)
+        try:
+            data = self._packer.pack(obs)
+            self._ws.send(data)
+            response = self._ws.recv()
+            if isinstance(response, str):
+                # we're expecting bytes; if the server sends a string, it's an error.
+                raise RuntimeError(f"Error in inference server:\n{response}")
+            return msgpack_numpy.unpackb(response)
+        except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError) as e:
+            logging.warning(f"WebSocket connection lost: {e}. Attempting to reconnect...")
+            # Reconnect and retry once
+            self._ws, self._server_metadata = self._wait_for_server()
+            data = self._packer.pack(obs)
+            self._ws.send(data)
+            response = self._ws.recv()
+            if isinstance(response, str):
+                raise RuntimeError(f"Error in inference server:\n{response}")
+            return msgpack_numpy.unpackb(response)
 
     @override
     def reset(self) -> None:

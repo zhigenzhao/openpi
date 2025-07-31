@@ -3,6 +3,7 @@ import threading
 from typing import Dict
 
 import numpy as np
+import openpi.transforms as transforms
 import tree
 from typing_extensions import override
 
@@ -63,18 +64,29 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
     """
 
     def __init__(
-        self, policy: _base_policy.BasePolicy, action_horizon: int, execution_horizon: int, inference_delay: int
+        self,
+        policy: _base_policy.BasePolicy,
+        action_horizon: int,
+        execution_horizon: int,
+        inference_delay: int,
+        action_norm_stats: transforms.NormStats,
     ):
         self._policy = policy
         self._action_horizon = action_horizon
         self._cur_step: int = 0
         self._execution_horizon = execution_horizon
         self._inference_delay = inference_delay
+        self._action_norm_stats = action_norm_stats
         self._last_results: Dict[str, np.ndarray] | None = None
         self._prefix_actions: np.ndarray | None = None
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self._inference_future: concurrent.futures.Future | None = None
         self._lock = threading.Lock()
+
+        self._prefix_weights = get_prefix_weights(
+            self._inference_delay, self._action_horizon - self._execution_horizon, self._action_horizon, "linear"
+        )
+        self._one_minus_prefix_weights = 1.0 - self._prefix_weights
 
     def _run_inference(self, obs: Dict) -> Dict:
         """Run inference in a separate thread."""
@@ -108,15 +120,43 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
 
             # Check if we need to start the next inference early
             if self._cur_step == self._execution_horizon:
-                self._prefix_actions = self._last_results["actions"][self._cur_step :, ...]
+                # state = obs["state"]
+                padding_dim = (self._execution_horizon, *self._last_results["actions"].shape[1:])
+                self._prefix_actions = np.concatenate(
+                    [
+                        self._last_results["actions"][self._cur_step :, ...].copy(),
+                        np.zeros(padding_dim, dtype=np.float32),
+                    ],
+                    axis=0,
+                )
+                # mask = np.asarray(
+                #     [True, True, True, True, True, True, False, True, True, True, True, True, True, False]
+                # )
+                # dims = mask.shape[-1]
+
+                # self._prefix_actions[..., :dims] -= np.expand_dims(np.where(mask, state[..., :dims], 0), axis=-2)
+                # self._prefix_actions = _normalize_quantile(self._prefix_actions, self._action_norm_stats)
                 # Start the next inference early in the background
-                obs["prefix_actions"] = self._prefix_actions.copy()
-                obs["inference_delay"] = self._inference_delay
+                # obs["prefix_actions"] = self._prefix_actions
+                # obs["inference_delay"] = self._inference_delay
                 self._inference_future = self._executor.submit(self._run_inference, obs)
+                # print(f"prefix_actions: {obs['prefix_actions']}")
             elif self._cur_step == self._execution_horizon + self._inference_delay:
                 self._last_results = self._inference_future.result()
+                new_actions = self._last_results["actions"]
+                print(f"new_actions shape: {new_actions.shape}, prefix_actions shape: {self._prefix_actions.shape}")
+                fixed_actions = (
+                    new_actions * self._one_minus_prefix_weights[:, None]
+                    + self._prefix_actions * self._prefix_weights[:, None]
+                )
+                print(f"fixed_actions shape: {fixed_actions.shape}")
+                self._last_results["actions"] = fixed_actions
+                # self._last_results = self._inference_future.result()
                 self._inference_future = None
                 self._cur_step = self._inference_delay
+
+                for i in range(self._cur_step):
+                    print(f"returned action {i}: {self._last_results['actions'][i, ...]}")
 
             return results
 
@@ -136,3 +176,38 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
         """Clean up the thread pool when the object is destroyed."""
         if hasattr(self, "_executor"):
             self._executor.shutdown(wait=False)
+
+
+def _normalize_quantile(x, stats: transforms.NormStats):
+    assert stats.q01 is not None
+    assert stats.q99 is not None
+    dims = x.shape[-1]
+    q01 = stats.q01[:dims]
+    q99 = stats.q99[:dims]
+    return (x - q01) / (q99 - q01 + 1e-6) * 2.0 - 1.0
+
+
+def get_prefix_weights(start: int, end: int, total: int, schedule: str) -> np.ndarray:
+    """With start=2, end=6, total=10, the output will be:
+    1  1  4/5 3/5 2/5 1/5 0  0  0  0
+        ^              ^
+        start           end
+    `start` (inclusive) is where the chunk starts being allowed to change. `end` (exclusive) is where the chunk stops
+    paying attention to the prefix. if start == 0, then the entire chunk is allowed to change. if end == total, then the
+    entire prefix is attended to.
+
+    `end` takes precedence over `start` in the sense that, if `end < start`, then `start` is pushed down to `end`. Thus,
+    if `end` is 0, then the entire prefix will always be ignored.
+    """
+    start = np.minimum(start, end)
+    if schedule == "ones":
+        w = np.ones(total)
+    elif schedule == "zeros":
+        w = (np.arange(total) < start).astype(np.float32)
+    elif schedule == "linear" or schedule == "exp":
+        w = np.clip((start - 1 - np.arange(total)) / (end - start + 1) + 1, 0, 1)
+        if schedule == "exp":
+            w = w * np.expm1(w) / (np.e - 1)
+    else:
+        raise ValueError(f"Invalid schedule: {schedule}")
+    return np.where(np.arange(total) >= end, 0, w)

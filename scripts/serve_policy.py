@@ -29,6 +29,7 @@ class Checkpoint:
     # Training config name (e.g., "pi0_aloha_sim").
     config: str
     # Checkpoint directory (e.g., "checkpoints/pi0_aloha_sim/exp/10000").
+
     dir: str
 
 
@@ -43,8 +44,8 @@ class RTCCheckpoint:
 
     action_horizon: int = 50
     prefix_attention_horizon: int = 25
-    inference_delay: int = 5
-    max_guidance_weight: float = 1.0
+    inference_delay: int = 7
+    max_guidance_weight: float = 100
 
 
 @dataclasses.dataclass
@@ -98,8 +99,8 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
         config="pi0_arx_dual_low_mem_finetune_multi_step",
         dir="checkpoints/pi0_arx_dual_low_mem_finetune_multi_step/exp_carpet_fold_0718/79999",
         action_horizon=50,
-        prefix_attention_horizon=30,
-        inference_delay=10,
+        prefix_attention_horizon=25,
+        inference_delay=7,
         max_guidance_weight=1.0,
     ),
 }
