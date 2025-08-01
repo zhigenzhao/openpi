@@ -52,7 +52,7 @@ class ActionChunkBroker(_base_policy.BasePolicy):
         self._cur_step = 0
 
 
-class RTCActionChunkBroker(_base_policy.BasePolicy):
+class RealTimeActionChunkBroker(_base_policy.BasePolicy):
     """Wraps a policy to return action chunks one-at-a-time.
 
     Assumes that the first dimension of all action fields is the chunk size.
@@ -112,7 +112,6 @@ class RTCActionChunkBroker(_base_policy.BasePolicy):
                     return x
 
             results = tree.map_structure(slicer, self._last_results)
-            print(f"results: {results}, cur_step: {self._cur_step}")
             self._cur_step += 1
 
             # Check if we need to start the next inference early

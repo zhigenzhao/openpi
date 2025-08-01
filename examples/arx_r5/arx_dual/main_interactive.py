@@ -4,7 +4,7 @@ from typing import List
 
 from openpi_client import action_chunk_broker
 from openpi_client import websocket_client_policy as _websocket_client_policy
-from openpi_client.runtime import runtime as _runtime
+from openpi_client.runtime import interactive_runtime as _interactive_runtime
 from openpi_client.runtime.agents import policy_agent as _policy_agent
 import tyro
 
@@ -17,14 +17,14 @@ from examples.arx_r5.robot_utils import DEFAULT_RIGHT_WRIST_CAM_SERIAL
 
 @dataclasses.dataclass
 class Args:
-    """Command line arguments for the ARX Real Robot client."""
+    """Command line arguments for the ARX Real Robot Interactive client."""
 
     host: str = "0.0.0.0"
     port: int = 8000
 
     action_horizon: int = 50
     execution_horizon: int = 10
-    inference_delay: int = 5
+    inference_delay: int = 8
 
     num_episodes: int = 1
     max_episode_steps: int = 10000000
@@ -38,14 +38,14 @@ class Args:
 
 
 def main(args: Args) -> None:
-    """Main function to run the ARX real robot environment with a policy server."""
+    """Main function to run the ARX real robot environment with interactive controls."""
     ws_client_policy = _websocket_client_policy.WebsocketClientPolicy(
         host=args.host,
         port=args.port,
     )
     logging.info(f"Server metadata: {ws_client_policy.get_server_metadata()}")
 
-    runtime = _runtime.Runtime(
+    interactive_runtime = _interactive_runtime.InteractiveRuntime(
         environment=_env.ARXRealEnvironment(
             can_port_left=args.can_port_left,
             can_port_right=args.can_port_right,
@@ -65,7 +65,7 @@ def main(args: Args) -> None:
         max_episode_steps=args.max_episode_steps,
     )
 
-    runtime.run()
+    interactive_runtime.run()
 
 
 if __name__ == "__main__":

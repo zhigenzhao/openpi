@@ -14,7 +14,7 @@ from examples.arx_r5.robot_utils import DEFAULT_RIGHT_WRIST_CAM_SERIAL
 from examples.arx_r5.robot_utils import ARXR5Interface
 from examples.arx_r5.robot_utils import RealSenseCameraInterface
 
-DT = 0.02  # Control frequency
+DT = 0.005  # Control frequency
 
 
 class RealEnv:

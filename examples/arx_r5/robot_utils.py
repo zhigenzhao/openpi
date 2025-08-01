@@ -45,7 +45,6 @@ class ARXR5Interface:
         can_port: str = "can0",
         dt: float = 0.01,
     ):
-        self.dt = dt
         file_path = os.path.dirname(os.path.abspath(__file__))
         urdf_path = os.path.join(file_path, "assets/R5a/R5a.urdf")
         self.arm = arx.InterfacesPy(urdf_path, can_port, 0)
