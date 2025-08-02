@@ -51,7 +51,7 @@ def create_teleop_controller(args: Args, environment: _env.ARXRealEnvironment):
         teleop_controller = ARXDualArmOpenPITeleopController(
             environment=environment,
             scale_factor=1.0,  # Reduce scale for safety
-            enable_log_data=False,
+            enable_log_data=True,
         )
 
         logging.info("ARXDualArmOpenPITeleopController created successfully")

@@ -64,6 +64,12 @@ class OpenPITeleopController(BaseTeleopController):
         self._running = False
         self._thread = None
 
+        # Initialize start time for logging
+        self._start_time = time.time()
+
+        self._is_logging = False
+        self._prev_b_button_state = False
+
         # Initialize base teleop controller
         super().__init__(
             robot_urdf_path=robot_urdf_path,
@@ -94,18 +100,6 @@ class OpenPITeleopController(BaseTeleopController):
         """
         raise NotImplementedError("Subclasses must implement _update_robot_state")
 
-    @abc.abstractmethod
-    def set_robot_state(self, action):
-        """Set the robot's internal state from a policy action.
-
-        This method should update self.placo_robot.state.q to match the given
-        action, enabling smooth transitions from policy control to teleoperation.
-
-        Args:
-            action: Policy action in environment-specific format
-        """
-        raise NotImplementedError("Subclasses must implement set_robot_state")
-
     def _send_command(self):
         """Send computed action to OpenPI environment instead of robot hardware."""
         try:
@@ -131,6 +125,18 @@ class OpenPITeleopController(BaseTeleopController):
             Dictionary containing actions in environment-specific format
         """
         raise NotImplementedError("Subclasses must implement _placo_to_env_action")
+
+    @abc.abstractmethod
+    def _get_robot_state_for_logging(self) -> Dict[str, Any]:
+        """Returns a dictionary of robot-specific data for logging.
+
+        This method should extract current robot state information from the
+        environment and return it in a structured format for data logging.
+
+        Returns:
+            Dictionary containing robot state data (joint positions, targets, etc.)
+        """
+        raise NotImplementedError("Subclasses must implement _get_robot_state_for_logging")
 
     def _get_link_pose(self, link_name: str):
         """Get current world pose for a given link name."""
@@ -241,9 +247,56 @@ class OpenPITeleopController(BaseTeleopController):
         logging.info("OpenPI teleoperation controller stopped")
 
     def _log_data(self):
-        """Log teleoperation data."""
-        if not self.enable_log_data:
+        """Logs the current state of the robot and environment data."""
+        if not self.enable_log_data or not self._is_logging:
             return
 
-        # This is a placeholder - implement based on specific logging needs
-        pass
+        timestamp = time.time() - self._start_time
+        data_entry = {"timestamp": timestamp}
+
+        # Get robot-specific state data from subclass
+        robot_state = self._get_robot_state_for_logging()
+        data_entry.update(robot_state)
+
+        # Log the data entry using base controller's logger
+        if hasattr(self, "data_logger") and self.data_logger is not None:
+            self.data_logger.add_entry(data_entry)
+            print(f"[Data Log] Saved entry with keys: {list(data_entry.keys())}")
+            logging.info(f"Logged data entry with keys: {list(data_entry.keys())}")
+        else:
+            print("[Data Log] ERROR: Data logger not available")
+            logging.warning("Data logger not available - cannot save data")
+
+    def _data_logging_thread(self, stop_event: threading.Event):
+        """Dedicated thread for data logging."""
+        while not stop_event.is_set():
+            start_time = time.time()
+            self._check_logging_button()
+            if self._is_logging:
+                self._log_data()
+            elapsed_time = time.time() - start_time
+            sleep_time = (1.0 / self.log_freq) - elapsed_time
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+        print("Data logging thread has stopped.")
+
+    def _check_logging_button(self):
+        """Checks for the 'B' button press to toggle data logging."""
+        b_button_state = self.xr_client.get_button_state_by_name("B")
+        right_axis_click = self.xr_client.get_button_state_by_name("right_axis_click")
+
+        if b_button_state and not self._prev_b_button_state:
+            self._is_logging = not self._is_logging
+            if self._is_logging:
+                print("--- Started data logging ---")
+            else:
+                print("--- Stopped data logging. Saving data... ---")
+                self.data_logger.save()
+                self.data_logger.reset()
+
+        if right_axis_click and self._is_logging:
+            print("--- Stopped data logging. Discarding data... ---")
+            self.data_logger.reset()
+            self._is_logging = False
+
+        self._prev_b_button_state = b_button_state

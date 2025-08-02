@@ -64,9 +64,9 @@ class XRInteractiveRuntime:
         self._teleop_lock = threading.Lock()
         self._grip_threshold = 0.5  # Threshold for grip activation
 
-        # Last policy action tracking for smooth teleop transition
-        self._last_policy_action = None
-        self._last_policy_action_lock = threading.Lock()
+        # Data logging thread management
+        self._data_logging_thread = None
+        self._stop_data_logging = threading.Event()
 
         logging.info("XRInteractiveRuntime initialized for both controllers.")
         logging.info("XR Controls: Left(X/Y/Menu) or Right(A/B/Menu) - pause/resume, new episode, quit")
@@ -86,6 +86,9 @@ class XRInteractiveRuntime:
             # But we need to ensure XR client is available for input monitoring
             self._initialize_teleop_controller()
 
+            # Start data logging thread if enabled
+            self._start_data_logging_if_enabled()
+
             episode = 0
             while episode < self._num_episodes and not self._should_quit:
                 self._run_episode()
@@ -101,6 +104,7 @@ class XRInteractiveRuntime:
 
         finally:
             self._stop_xr_monitor_func()
+            self._stop_data_logging_thread()
 
     def _run_episode(self) -> None:
         """Run a single episode with XR controller controls."""
@@ -167,10 +171,6 @@ class XRInteractiveRuntime:
             else:
                 # Otherwise, use policy agent
                 action = self._agent.get_action(observation)
-                # Store the latest policy action for potential teleop transition
-                if action is not None:
-                    with self._last_policy_action_lock:
-                        self._last_policy_action = action
 
             # If an action was determined (from either source), apply it
             if action is not None:
@@ -227,11 +227,9 @@ class XRInteractiveRuntime:
                 # Get current button states for both controllers
                 left_x_button = xr_client.get_button_state_by_name("X")
                 left_y_button = xr_client.get_button_state_by_name("Y")
-                left_menu_button = xr_client.get_button_state_by_name("left_menu_button")
 
                 right_a_button = xr_client.get_button_state_by_name("A")
                 right_b_button = xr_client.get_button_state_by_name("B")
-                right_menu_button = xr_client.get_button_state_by_name("right_menu_button")
 
                 # Get grip states for teleoperation
                 left_grip = xr_client.get_key_value_by_name("left_grip")
@@ -247,19 +245,13 @@ class XRInteractiveRuntime:
 
                 if left_y_button and not self._last_left_y_button_state:
                     print("\n[XR] Left Y button pressed (new episode)")
-                    self._handle_new_episode_command()
-
-                if left_menu_button and not self._last_left_menu_button_state:
-                    print("\n[XR] Left menu button pressed (quit)")
                     self._handle_quit_command()
 
                 # Update button state history for both controllers
                 self._last_left_x_button_state = left_x_button
                 self._last_left_y_button_state = left_y_button
-                self._last_left_menu_button_state = left_menu_button
                 self._last_right_a_button_state = right_a_button
                 self._last_right_b_button_state = right_b_button
-                self._last_right_menu_button_state = right_menu_button
 
                 time.sleep(0.05)  # Check buttons at 20Hz
 
@@ -323,11 +315,8 @@ class XRInteractiveRuntime:
 
             # Log state changes
             if self._teleop_active and not was_active:
-                print("[XR Teleop] Teleoperation ACTIVATED - Setting internal robot state to last policy action.")
-                logging.info(
-                    "Teleoperation activated via grip buttons - setting internal robot state to last policy action."
-                )
-                # self._apply_last_policy_action_on_teleop_activation()
+                print("[XR Teleop] Teleoperation ACTIVATED - Syncing end effector poses.")
+                logging.info("Teleoperation activated via grip buttons - syncing end effector poses to placo tasks.")
                 # Sync end effector poses to placo tasks for smooth teleop initialization
                 self._teleop_controller.sync_end_effector_poses_to_placo_tasks()
                 self._agent.reset()
@@ -376,3 +365,34 @@ class XRInteractiveRuntime:
 
         except Exception as e:
             logging.error(f"Error checking teleop controller initialization: {e}")
+
+    def _start_data_logging_if_enabled(self) -> None:
+        """Start data logging thread if enabled in teleop controller."""
+        if (
+            self._teleop_controller is not None
+            and hasattr(self._teleop_controller, "enable_log_data")
+            and self._teleop_controller.enable_log_data
+        ):
+            try:
+                logging.info("Starting data logging thread")
+                print("[Data Logging] Starting data logging thread - press 'B' button to toggle logging")
+                self._data_logging_thread = threading.Thread(
+                    target=self._teleop_controller._data_logging_thread,
+                    args=(self._stop_data_logging,),
+                    daemon=True,
+                )
+                self._data_logging_thread.start()
+            except Exception as e:
+                logging.error(f"Error starting data logging thread: {e}")
+                print(f"[Data Logging Error] Failed to start logging: {e}")
+
+    def _stop_data_logging_thread(self) -> None:
+        """Stop the data logging thread."""
+        if self._data_logging_thread is not None:
+            try:
+                logging.info("Stopping data logging thread")
+                self._stop_data_logging.set()
+                self._data_logging_thread.join(timeout=2.0)
+                self._data_logging_thread = None
+            except Exception as e:
+                logging.error(f"Error stopping data logging thread: {e}")
