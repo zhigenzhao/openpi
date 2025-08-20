@@ -4,3 +4,6 @@
 [submodule "third_party/libero"]
 	path = third_party/libero
 	url = https://github.com/Lifelong-Robot-Learning/LIBERO.git
+[submodule "third_party/XRoboToolkit-Teleop-Sample-Python"]
+	path = third_party/XRoboToolkit-Teleop-Sample-Python
+	url = https://github.com/XR-Robotics/XRoboToolkit-Teleop-Sample-Python.git

@@ -4,10 +4,35 @@ from pathlib import Path
 import pickle
 import shutil
 
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+import cv2
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 import numpy as np
 import tqdm
 import tyro
+
+
+def decompress_jpg_to_image(jpg_bytes: bytes) -> np.ndarray:
+    """
+    Decompress JPG bytes back to numpy image array.
+
+    Args:
+        jpg_bytes: JPG compressed image bytes
+
+    Returns:
+        numpy.ndarray: Decompressed image array, or None if decompression fails
+    """
+    if jpg_bytes is None:
+        return None
+
+    try:
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(jpg_bytes, np.uint8)
+        # Decode image
+        image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+        return image
+    except Exception as e:
+        print(f"Warning: Failed to decompress JPG bytes: {e}")
+        return None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -64,6 +89,7 @@ def create_empty_dataset(
         image_writer_threads=dataset_config.image_writer_threads,
         image_writer_processes=dataset_config.image_writer_processes,
         use_videos=True,
+        video_backend=dataset_config.video_backend,
     )
 
 
@@ -77,7 +103,7 @@ def populate_dataset(dataset: LeRobotDataset, pkl_files: list[Path]) -> LeRobotD
         #     task_prompt = "fold the carpet again along the long edge"
         # else:
         #     raise ValueError(f"Unexpected: {filename}")
-        task_prompt = "fold the carpet in half along the short edge, and then fold it again along the long edge"
+        task_prompt = "separate the carpet from the pile"
 
         with pkl_file.open("rb") as f:
             episode_data = pickle.load(f)
@@ -103,14 +129,14 @@ def populate_dataset(dataset: LeRobotDataset, pkl_files: list[Path]) -> LeRobotD
             ).astype(np.float32)
 
             frame = {
-                "base_image": step_data["image"]["base"]["color"],
-                "left_wrist_image": step_data["image"]["left_wrist"]["color"],
-                "right_wrist_image": step_data["image"]["right_wrist"]["color"],
+                "base_image": decompress_jpg_to_image(step_data["image"]["215222077461"]["color"]),
+                "left_wrist_image": decompress_jpg_to_image(step_data["image"]["218622272499"]["color"]),
+                "right_wrist_image": decompress_jpg_to_image(step_data["image"]["218622272014"]["color"]),
                 "state": state,
                 "actions": action,
-                "task": task_prompt,
+                # "task": task_prompt,
             }
-            dataset.add_frame(frame)
+            dataset.add_frame(frame, task=task_prompt)
 
         dataset.save_episode()
     return dataset
@@ -118,7 +144,7 @@ def populate_dataset(dataset: LeRobotDataset, pkl_files: list[Path]) -> LeRobotD
 
 def port_arx(
     data_dir: Path,
-    repo_id: str = "kelvinzhaozg/arx_dual_arm_carpet_fold_combined",
+    repo_id: str = "kelvinzhaozg/arx_dual_carpet_separation",
     root_dir: str = None,
     *,
     use_videos: bool = True,
