@@ -180,7 +180,26 @@ class ResizeImages(DataTransformFn):
     width: int
 
     def __call__(self, data: DataDict) -> DataDict:
-        data["image"] = {k: image_tools.resize_with_pad(v, self.height, self.width) for k, v in data["image"].items()}
+        # Handle different image formats and convert to (height, width, channels)
+        processed_images = {}
+        for k, v in data["image"].items():
+            if len(v.shape) == 4 and v.shape[0] == 1:
+                # Convert from (1, channels, height, width) to (height, width, channels)
+                v_processed = (
+                    v[0].permute(1, 2, 0).numpy() if hasattr(v, "numpy")
+                    else v[0].transpose(1, 2, 0)
+                )
+            elif len(v.shape) == 3:
+                # Assume it's already in (height, width, channels) format
+                v_processed = v.numpy() if hasattr(v, "numpy") else v
+            else:
+                # Skip malformed images with error logging
+                print(f"ERROR: Cannot handle image shape {v.shape} for key '{k}', skipping")
+                continue
+
+            processed_images[k] = image_tools.resize_with_pad(v_processed, self.height, self.width)
+
+        data["image"] = processed_images
         return data
 
 
