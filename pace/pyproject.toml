@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pace"
+version = "0.1.0"
+description = "Reusable HPC experiment launcher for SLURM clusters with Apptainer"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "RLinf Team"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Clustering",
+]
+keywords = ["hpc", "slurm", "apptainer", "checkpoint", "training", "machine-learning"]
+dependencies = [
+    "pyyaml>=6.0",
+    "jinja2>=3.0",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "ruff",
+]
+
+[project.scripts]
+pace = "pace.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/rlinf/pace"
+Repository = "https://github.com/rlinf/pace"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pace*", "pace_runtime*"]
+
+[tool.setuptools.package-data]
+pace = ["templates/*.j2"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
