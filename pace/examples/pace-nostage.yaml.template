@@ -1,0 +1,386 @@
+# ==============================================================================
+# PACE Configuration for Example Project
+# ==============================================================================
+#
+# This configuration file defines how PACE manages experiment runs for the
+# Example reinforcement learning infrastructure on the PACE HPC cluster.
+#
+# Usage:
+#   pace run submit <RUN_NAME> -c pace_project/pace.yaml -- additional command line arguments you want to send to the entry point
+#
+# Example:
+#   pace run submit my_experiment -c pace_project/pace.yaml -- pi05_libero --exp-name=my_experiment --resume --save_interval {every mini batches}
+#
+# Dry-run (preview without submission):
+#   pace run submit my_experiment -c pace_project/pace.yaml --dry-run -- pi05_libero --exp-name=my_experiment --resume --save_interval {every mini batches}
+#
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# PROJECT IDENTIFIER
+# ------------------------------------------------------------------------------
+# Unique name for this project. Used to organize runs in the registry.
+# All runs will be stored under: {registry_root}/{project}/{run_name}/
+project: your_project_name  # TODO: set your project name
+
+# ------------------------------------------------------------------------------
+# CONTAINER RUNTIME
+# ------------------------------------------------------------------------------
+# Configuration for the Apptainer/Singularity container.
+runtime:
+  # Path to the .sif container image on the cluster.
+  # This image should contain all dependencies (Python, PyTorch, etc.)
+  image: /path/to/your/openpi.sif  # TODO: path to your image
+
+  # Container engine to use. Currently only 'apptainer' is supported.
+  engine: apptainer
+
+# ------------------------------------------------------------------------------
+# REMOTE SSH ORCHESTRATION
+# ------------------------------------------------------------------------------
+# Enable running PACE commands from a local machine (not on the cluster).
+# When enabled, PACE will:
+#   1. Create snapshots locally
+#   2. Rsync snapshots and artifacts to the cluster
+#   3. Submit jobs via SSH
+remote:
+  # Set to true to enable SSH-based remote submission.
+  enabled: true
+
+  # SSH host name (should match entry in ~/.ssh/config).
+  # Example ~/.ssh/config:
+  #   Host pace
+  #       HostName xxxx
+  #       User xxx
+  #       IdentityFile xxx
+  host: your_ssh_host  # TODO: change to your SSH host alias
+
+  # SSH username. Set to null to use the default from SSH config.
+  user: null
+
+  # Remote working directory where the project lives on the cluster.
+  # This is used as the base for relative paths and SSH command execution.
+  project_dir: /path/to/your/project  # TODO: change to your remote project_dir
+
+  # Execution mode:
+  #   - auto: Automatically detect if running locally or on cluster
+  #   - local: Always execute commands locally (when on login node)
+  #   - remote: Always use SSH for remote execution
+  mode: auto
+
+  # Additional SSH options (passed to ssh command).
+  # Example: ["-o", "StrictHostKeyChecking=no"]
+  ssh_options: []
+
+  # Additional rsync options (passed to rsync command).
+  # Example: ["--progress", "--compress"]
+  rsync_options: []
+
+# ------------------------------------------------------------------------------
+# SLURM RESOURCE REQUESTS
+# ------------------------------------------------------------------------------
+# Resource allocation for SLURM jobs. These values are converted to
+# #SBATCH directives in the generated job script.
+resources:
+  # Number of GPUs per node.
+  gpus: 8  # TODO: set GPUs per node
+
+  # GPU type for GRES specification (generates: --gres=gpu:H100:8).
+  gpu_type: H100  # TODO: set GPU type available on your cluster
+
+  # CPUs per task.
+  cpus: 64  # TODO: set CPUs per task
+
+  # Memory in gigabytes (generates: --mem=1500G).
+  mem_gb: 1500  # TODO: set memory (GB)
+
+  # Wall time limit in HH:MM:SS format.
+  # Note: Jobs approaching 2 hours should save checkpoints frequently.
+  time: "1:59:59"  # TODO: set job time limit
+
+  # Number of nodes. Multi-node training requires special configuration.
+  nodes: 1  # TODO: set node count
+
+  # Optional cluster-specific SLURM settings (uncomment to use):
+  # partition: gpu          # SLURM partition to submit to
+  # account: my_account     # Account/project for billing
+  # qos: normal             # Quality of service level
+
+# ------------------------------------------------------------------------------
+# SCHEDULER CONFIGURATION
+# ------------------------------------------------------------------------------
+scheduler:
+  # Scheduler type. Currently only 'slurm' is supported.
+  type: slurm
+
+  # Directory for SLURM stdout/stderr log files.
+  # The {run_name} placeholder is replaced with the actual run name.
+  # Generated files: slurm_<JOB_ID>.out, slurm_<JOB_ID>.err
+  log_dir: /path/to/your/pace_logs/{run_name}/scheduler  # TODO: set scheduler log path
+
+# ------------------------------------------------------------------------------
+# SNAPSHOTS
+# ------------------------------------------------------------------------------
+# Source directories to snapshot before each run submission.
+# Snapshots create timestamped copies for reproducibility.
+snapshots:
+  - name: repo
+    # Local source directory (on the machine running `pace run submit`).
+    # For remote mode, this is on your local workstation.
+    local_dir: /path/to/your/local/repo  # TODO: local repo path
+
+    # Destination directory on cluster storage where snapshots are created.
+    # Each snapshot creates: {target_dir}/repo_YYYYMMDD_HHMMSS/
+    target_dir: /path/to/your/pace_snapshots  # TODO: snapshot destination path
+
+    # Patterns to exclude from the snapshot (rsync exclude syntax).
+    # Excluding large/generated directories significantly speeds up sync.
+    exclude:
+      - "*.git*"           # Git repository metadata
+      - "logs/"            # Training logs (stored in persistent_outputs)
+      - "pi_home/"         # Model data (separate shared_input)
+      - "pt_models/"       # PyTorch models (separate shared_input)
+      - ".venv/"           # Python virtual environment
+      - "checkpoints/"     # Checkpoints (stored in persistent_outputs)
+      - "__pycache__/"     # Python bytecode cache
+      - "*.pyc"            # Python compiled files
+      - ".cache/"
+      - "*.sif"
+
+# ------------------------------------------------------------------------------
+# SHARED INPUTS
+# ------------------------------------------------------------------------------
+# Large read-only data that needs to be available during training.
+# stage_mode determines how data is made available:
+#   - copy_to_tmp: Copy to $TMPDIR on compute node (faster runtime, slower start)
+#   - bind: Direct bind mount (immediate start, may be slower if on network storage)
+shared_inputs:
+  - name: openpi_home
+    # Host path to the data on cluster storage.
+    host_path: /path/to/your/openpi_home  # TODO: dataset/model home path
+
+    # Copy to compute node's local SSD for faster access during training.
+    # The staged path is accessible via {staged.pi_home} in binds.
+    # stage_mode: copy_to_tmp
+
+  - name: huggingface
+    host_path: /path/to/your/huggingface_cache  # TODO: HF cache path
+    # stage_mode: copy_to_tmp
+
+  - name: assets
+    host_path: /path/to/your/assets  # TODO: assets path
+
+  - name: jax_cache
+    host_path: /path/to/your/jax_cache  # TODO: JAX cache path
+
+  - name: uv_cache
+    host_path: /path/to/your/uv_cache  # TODO: uv cache path
+  
+
+# ------------------------------------------------------------------------------
+# PERSISTENT OUTPUTS
+# ------------------------------------------------------------------------------
+# Directories that persist across job attempts (logs, checkpoints, artifacts).
+# These directories are NOT deleted between attempts and accumulate data.
+persistent_outputs:
+  # - name: logs
+  #   # Semantic role identifier. Used by resume system to find checkpoints.
+  #   # Valid roles: logs, checkpoints, artifacts (or custom names).
+  #   role: logs
+
+  #   # Host path on cluster storage. This is a shared logs directory.
+  #   # Note: This is the ROOT logs dir, not per-run (to match old behavior).
+  #   host_path: /path/to/your/logs  # TODO: logs root path
+
+  #   # Where this directory appears inside the container.
+  #   container_path: /workspace/RLinf/logs
+
+  #   # Create directory if it doesn't exist.
+  #   create_if_missing: true
+
+  - name: checkpoints
+    role: checkpoints  # TODO: keep as 'checkpoints' unless you need a custom role
+
+    # Per-run checkpoint directory. Uses {run_name} for isolation.
+    # Each run gets its own checkpoint directory.
+    host_path: /path/to/your/checkpoints  # TODO: checkpoint root path
+    container_path: /app/checkpoints
+    create_if_missing: true
+
+  # - name: artifacts
+  #   role: artifacts
+  #   host_path: 
+  #   container_path: 
+  #   create_if_missing: true
+
+# ------------------------------------------------------------------------------
+# CONTAINER BIND MOUNTS
+# ------------------------------------------------------------------------------
+# Bind specifications connecting host paths to container paths.
+# Uses template placeholders that are resolved at runtime.
+#
+# Available placeholders:
+#   {snapshot.NAME}    - Resolved snapshot directory path
+#   {staged.NAME}      - Path to staged input ($TMPDIR or host path)
+#   {shared.NAME}      - Direct host path of shared input
+#   {persistent.NAME}  - Host path of persistent output
+binds:
+  # Mount the code snapshot as the main workspace.
+  - host: "{snapshot.repo}"
+    container: /app
+    mode: rw    # rw = read-write, ro = read-only
+
+  - host: "{shared.openpi_home}"
+    container: /app/openpi_home
+    mode: rw
+
+  - host: "{shared.huggingface}"
+    container: /app/huggingface
+    mode: rw
+
+  - host: "{shared.jax_cache}"
+    container: /root/.cache/jax
+    mode: rw
+
+  - host: "{shared.uv_cache}"
+    container: /app/uv_cache
+
+  # Mount persistent output directories.
+  # - host: "{persistent.logs}"
+  #   container: 
+  #   mode: rw
+
+  - host: "{persistent.checkpoints}"
+    container: /app/checkpoints
+    mode: rw
+
+  # - host: "{persistent.artifacts}"
+  #   container: 
+  #   mode: rw
+
+# ------------------------------------------------------------------------------
+# LAUNCH CONFIGURATION
+# ------------------------------------------------------------------------------
+# Defines how to construct and execute the training command.
+launch:
+  # Working directory inside the container (cd to this before running command).
+  workdir: /app
+
+  # Shell initialization commands (run before the main command).
+  # Use this to activate conda environments, source scripts, etc.
+  # shell_init:
+  #   - source switch_env openpi    # Activate the openpi conda environment
+
+  # Base command that forms the core of the execution.
+  # This is always included in the final command.
+  base_command:
+    - uv
+    - run
+    - scripts/train.py
+
+  # User arguments configuration.
+  # User supplies: pi05_libero --exp-name=my_experiment --resume after "--" in CLI.
+  # Example: pace run submit test -- libero_spatial_ppo_openpi LIBERO
+  # These are inserted at the specified phase.
+  user_args:
+    # Phase where user args are inserted into the command.
+    # Options: pre_base, post_base, pre_resume, post_resume, final
+    phase: post_base
+
+# ------------------------------------------------------------------------------
+# ENVIRONMENT AND CLI INJECTIONS
+# ------------------------------------------------------------------------------
+# Conditional injection of environment variables and CLI arguments.
+# Each injection has a condition that determines when it's applied.
+#
+# Conditions:
+#   - always: Applied on every attempt
+#   - resume_only: Applied only when resuming from checkpoint
+#   - non_resume_only: Applied only on fresh runs (no resume)
+#   - first_attempt_only: Applied only on the first attempt
+injections:
+  # Environment variable injections.
+  env:
+    - name: core-env
+      when: always
+      values:
+        # PACE runtime metadata (available in training code via os.environ).
+        PACE_RUN_NAME: "{run_name}"
+        PACE_ATTEMPT_ID: "{attempt_id}"
+        PACE_JOB_ID: "{job_id}"
+        # PACE_LOG_DIR: "{container.logs}"
+        PACE_CHECKPOINT_DIR: "{container.checkpoints}"
+
+        # Application-specific environment variables (from old pace_tools/.env).
+        OPENPI_DATA_HOME: /app/openpi_home
+        HF_HOME: /app/huggingface
+
+        NVIDIA_DRIVER_CAPABILITIES: all
+        WANDB_API_KEY: ""  # TODO: set via env var/secret manager (do not hardcode)
+        WANDB_ENTITY: your_wandb_entity  # TODO: set your W&B entity/team
+        UV_CACHE_DIR: /app/uv_cache
+        UV_NO_SYNC: "1"
+        XLA_PYTHON_CLIENT_MEM_FRACTION: "0.9"
+
+
+  # # CLI argument injections.
+  # cli:
+  #   # Append run_name as the final argument to the command.
+  #   # Final command: bash examples/.../run_embodiment.sh <USER_ARGS> <RUN_NAME>
+  #   - name: append-run-name
+  #     when: always
+  #     phase: final    # Added at the very end of the command
+  #     args:
+  #       - "{run_name}"
+
+# ------------------------------------------------------------------------------
+# RESUME CONFIGURATION
+# ------------------------------------------------------------------------------
+# Controls automatic checkpoint discovery and resume behavior.
+resume:
+  # Enable resume functionality.
+  enabled: true
+
+  # Which persistent_output contains the checkpoint tree root.
+  # RLinf writes checkpoints under:
+  #   {persistent.logs}/{run_name}/<timestamp>/{run_name}/checkpoints/global_step_*
+  checkpoint_output: checkpoints
+
+  # Resume strategy:
+  #   - latest_safe: Use latest checkpoint with checkpoint_marker (recommended)
+  #   - latest: Use any latest checkpoint directory (less safe)
+  #   - none: Don't auto-resume, always start fresh
+  strategy: latest
+
+  # Search recursively from checkpoint_output root.
+  search_recursive: true
+
+  # Extract sortable key from checkpoint directory name.
+  sort_pattern: "^(?P<key>\\d+)$"
+
+  # OpenPI expects `--resume` in training args to restore latest checkpoint
+  # under checkpoint_base_dir/config_name/exp_name.
+  cli_args:
+    - "--resume"
+
+# ------------------------------------------------------------------------------
+# COMPLETION DETECTION
+# ------------------------------------------------------------------------------
+# How PACE determines if training completed successfully.
+completion:
+  # File that indicates training finished successfully.
+  # Training code should write this file when done:
+  #   from pace_runtime.markers import mark_training_done
+  #   mark_training_done(log_dir)
+  marker_file: TRAINING_DONE
+
+# ------------------------------------------------------------------------------
+# REGISTRY ROOT
+# ------------------------------------------------------------------------------
+# Root directory for run registry (manifests, attempts, metadata).
+# Structure: {registry_root}/{project}/{run_name}/
+#   manifest.yaml      - Run metadata
+#   state.json         - Mutable run state
+#   attempts/          - Per-attempt artifacts (slurm scripts, wrappers)
+#   markers/           - Completion markers
+registry_root: /path/to/your/pace_registry  # TODO: registry root path

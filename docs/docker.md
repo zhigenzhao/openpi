@@ -23,3 +23,34 @@ docker compose -f examples/<example_name>/compose.yml up --build
 where `<example_name>` is the name of the example you want to run.
 
 During the first run of any example, Docker will build the images. Go grab a coffee while this happens. Subsequent runs will be faster since the images are cached.
+
+### OpenPI Env Management Container
+
+For a general OpenPI environment container (separate from example-specific Dockerfiles), use:
+- `docker/openpi.Dockerfile`
+- `docker/compose.yml`
+- It follows the same install flow as the README (`uv sync`, then `uv pip install -e .`).
+
+Build the image from the repository root:
+
+```bash
+docker build . -t openpi-env -f docker/openpi.Dockerfile
+```
+
+Run it with the repository bind-mounted to `/app` (required for editable install):
+
+```bash
+docker run --rm -it --network=host --gpus all -v $PWD:/app openpi-env
+```
+
+Or run via Compose:
+
+```bash
+docker compose -f docker/compose.yml up --build
+```
+
+Inside the container, this should point to `/app/src/openpi/...`:
+
+```bash
+python -c "import openpi; print(openpi.__file__)"
+```
