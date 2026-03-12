@@ -1022,17 +1022,32 @@ _CONFIGS = [
         name="pi0_gim_dual_tshirt",
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"),
         data=GimDualArmLeRobotDataConfig(
-            repo_id="kelvinzhaozg/gim_tshirt",
+            repo_id="kelvinzhaozg/gim_tshirt_259",
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
         num_train_steps=300000,
-        batch_size=64,
-        num_workers=64,
+        batch_size=16,
+        num_workers=12,
         freeze_filter=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter(),
         ema_decay=None,
+    ),
+    TrainConfig(
+        name="pi05_gim_dual_tshirt",
+        model=pi0_config.Pi0Config(pi05=True, action_dim=14, action_horizon=10),
+        data=GimDualArmLeRobotDataConfig(
+            repo_id="kelvinzhaozg/gim_tshirt_259",
+            base_config=DataConfig(prompt_from_task=True),
+            assets=AssetsConfig(
+                assets_dir="gs://openpi-assets/checkpoints/pi05_base/assets/",
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        num_train_steps=300000,
+        batch_size=64,
+        num_workers=64,
     ),
     # RoboArena & PolaRiS configs.
     *roboarena_config.get_roboarena_configs(),
