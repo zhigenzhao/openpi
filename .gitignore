@@ -1,5 +1,6 @@
 # Data directories.
 assets/
+!examples/gim/assets/
 checkpoints/
 data/
 wandb/
