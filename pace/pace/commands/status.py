@@ -93,7 +93,7 @@ def run_status(
             if slurm_job_id:
                 click.echo(f"  SLURM Job ID: {slurm_job_id}")
                 state_cmd = (
-                    f"squeue -j {slurm_job_id} -h -o %T 2>/dev/null || "
+                    f"squeue -j {slurm_job_id} -h -o %T 2>/dev/null | grep . || "
                     f"sacct -j {slurm_job_id} -n -o State -P 2>/dev/null | head -1"
                 )
                 _state_retries = 3
