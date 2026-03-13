@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import click
@@ -95,12 +96,25 @@ def run_status(
                     f"squeue -j {slurm_job_id} -h -o %T 2>/dev/null || "
                     f"sacct -j {slurm_job_id} -n -o State -P 2>/dev/null | head -1"
                 )
-                completed = executor.run(
-                    ["bash", "-lc", state_cmd],
-                    remote_cwd=config.remote.project_dir,
-                    stream_output=False,
-                )
-                job_state = (completed.stdout or "UNKNOWN").strip() or "UNKNOWN"
+                _state_retries = 3
+                _state_delay = 5
+                job_state = "UNKNOWN"
+                for _i in range(_state_retries):
+                    completed = executor.run(
+                        ["bash", "-lc", state_cmd],
+                        remote_cwd=config.remote.project_dir,
+                        stream_output=False,
+                    )
+                    if completed.returncode == 0:
+                        job_state = (completed.stdout or "").strip() or "UNKNOWN"
+                        break
+                    if _i < _state_retries - 1:
+                        click.echo(
+                            f"  Warning: failed to query SLURM state, retrying in {_state_delay}s..."
+                            f" ({_i + 1}/{_state_retries})",
+                            err=True,
+                        )
+                        time.sleep(_state_delay)
                 click.echo(f"  SLURM State: {job_state}")
 
         done_marker = f"{remote_run_dir(config, run_name)}/markers/{config.completion.marker_file}"
