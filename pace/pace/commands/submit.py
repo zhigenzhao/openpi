@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shlex
 import tempfile
+import time
 from pathlib import Path
 
 import click
@@ -37,6 +38,9 @@ from pace.core.snapshots import (
     resolve_snapshot_path,
 )
 from pace.launch import LaunchPlanBuilder, LaunchRenderer
+
+_META_SYNC_RETRIES = 3
+_META_SYNC_DELAY = 10  # seconds between metadata sync retries
 
 
 def _ensure_remote_dirs(
@@ -366,6 +370,7 @@ def run_submit(
         log_dir=scheduler_log_dir,
         wrapper_path=wrapper_path,
         staging_plan=staging_plan,
+        pre_apptainer_commands=effective_config.hooks.pre_apptainer,
     )
 
     if dry_run:
@@ -388,7 +393,7 @@ def run_submit(
         local_run_dir = registry.run_dir(effective_config.project, run_name)
         remote_run_dir_path = remote_run_dir(config, run_name)
         click.echo(
-            "Syncing prepared run artifacts to remote registry: "
+            "Syncing run directory to remote registry: "
             f"{local_run_dir} -> {remote_run_dir_path}"
         )
         try:
@@ -409,11 +414,34 @@ def run_submit(
             if not match:
                 raise click.ClickException(f"Unexpected sbatch output: {output}")
             job_id = int(match.group(1))
-            update_remote_attempt_submission(
-                executor,
-                f"{remote_attempt_dir(config, run_name, attempt.attempt_id)}/attempt.yaml",
-                job_id,
-            )
+
+            # Update local attempt record first so job_id is durably saved
+            # even if the subsequent remote sync fails.
+            attempt.slurm_job_id = job_id
+            attempt.status = attempt.status.SUBMITTED
+            registry.save_attempt(effective_config.project, run_name, attempt)
+
+            # Re-sync to propagate the updated attempt.yaml to remote.
+            # Retry on transient network failures — job is already submitted so
+            # we must not exit non-zero just because the sync failed.
+            for _i in range(_META_SYNC_RETRIES):
+                try:
+                    sync_local_run_to_remote(executor, local_run_dir, remote_run_dir_path)
+                    break  # success
+                except SSHRemoteError as sync_exc:
+                    if _i < _META_SYNC_RETRIES - 1:
+                        click.echo(
+                            f"Warning: metadata sync failed ({sync_exc}), retrying in "
+                            f"{_META_SYNC_DELAY}s... ({_i + 1}/{_META_SYNC_RETRIES})"
+                        )
+                        time.sleep(_META_SYNC_DELAY)
+                    else:
+                        click.echo(
+                            f"Warning: job {job_id} submitted but metadata sync failed "
+                            f"after {_META_SYNC_RETRIES} attempts. Job ID is recorded locally.",
+                            err=True,
+                        )
+
             click.echo(f"Submitted remote job: {job_id}")
             return
         except SSHRemoteError as exc:

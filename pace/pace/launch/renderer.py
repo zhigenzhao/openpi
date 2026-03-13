@@ -49,6 +49,13 @@ class LaunchRenderer:
                 lines.append(cmd)
             lines.append("")
 
+        # Pre-launch hooks
+        if plan.pre_launch:
+            lines.append("# Pre-launch hooks")
+            for cmd in plan.pre_launch:
+                lines.append(cmd)
+            lines.append("")
+
         # Change to working directory
         lines.append(f"# Working directory")
         lines.append(f"cd {plan.workdir}")
@@ -57,7 +64,17 @@ class LaunchRenderer:
         # Execute command
         lines.append("# Execute command")
         command_str = " ".join(shlex.quote(arg) for arg in plan.command)
-        lines.append(f"exec {command_str}")
+        if plan.post_launch:
+            lines.append(command_str)
+            lines.append("_pace_exit=$?")
+            lines.append("")
+            lines.append("# Post-launch hooks")
+            for cmd in plan.post_launch:
+                lines.append(cmd)
+            lines.append("")
+            lines.append("exit $_pace_exit")
+        else:
+            lines.append(f"exec {command_str}")
 
         return "\n".join(lines) + "\n"
 

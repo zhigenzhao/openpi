@@ -64,6 +64,8 @@ class LaunchPlanBuilder:
             environment=environment,
             binds=binds,
             image_path=self.config.runtime.image,
+            pre_launch=list(self.config.hooks.pre_launch),
+            post_launch=list(self.config.hooks.post_launch),
         )
 
     def _build_command(self, context: RuntimeContext) -> list[str]:

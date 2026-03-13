@@ -16,6 +16,7 @@ from pace.config.models import (
     CliInjectionConfig,
     CompletionConfig,
     EnvInjectionConfig,
+    HooksConfig,
     InjectionCondition,
     InjectionsConfig,
     LaunchConfig,
@@ -295,6 +296,17 @@ def _parse_wandb(data: dict[str, Any] | None) -> WandBConfig:
     )
 
 
+def _parse_hooks(data: dict[str, Any] | None) -> HooksConfig:
+    """Parse hooks section."""
+    if not data:
+        return HooksConfig()
+    return HooksConfig(
+        pre_apptainer=data.get("pre_apptainer", []),
+        pre_launch=data.get("pre_launch", []),
+        post_launch=data.get("post_launch", []),
+    )
+
+
 def _parse_remote(data: dict[str, Any] | None) -> RemoteConfig:
     """Parse remote section."""
     if not data:
@@ -369,6 +381,7 @@ def load_config(path: str | Path) -> ProjectConfig:
         completion=_parse_completion(data.get("completion")),
         wandb=_parse_wandb(data.get("wandb")),
         remote=_parse_remote(data.get("remote")),
+        hooks=_parse_hooks(data.get("hooks")),
         registry_root=data.get("registry_root", "/cluster/pace_runs"),
     )
 

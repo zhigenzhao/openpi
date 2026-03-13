@@ -177,6 +177,15 @@ class UserArgsConfig:
 
 
 @dataclass
+class HooksConfig:
+    """Shell command hooks for different execution phases."""
+
+    pre_apptainer: list[str] = field(default_factory=list)
+    pre_launch: list[str] = field(default_factory=list)
+    post_launch: list[str] = field(default_factory=list)
+
+
+@dataclass
 class LaunchConfig:
     """Launch recipe configuration.
 
@@ -349,6 +358,7 @@ class ProjectConfig:
     completion: CompletionConfig = field(default_factory=CompletionConfig)
     wandb: WandBConfig = field(default_factory=WandBConfig)
     remote: RemoteConfig = field(default_factory=RemoteConfig)
+    hooks: HooksConfig = field(default_factory=HooksConfig)
     registry_root: str = "/cluster/pace_runs"
 
     def get_snapshot(self, name: str) -> SnapshotConfig | None:

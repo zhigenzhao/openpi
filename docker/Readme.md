@@ -12,6 +12,11 @@ The image is built without shipping repository source code in the final stage. Y
 
 ## Build
 
+> [!WARNING]
+> ⚠️ It is recommended to rebuild your uv.lock via `uv syc` or `uv lock`. If errors persist, remove the folder `.venv` first before rebuilding the lock.
+
+
+
 From the repository root:
 
 ```bash

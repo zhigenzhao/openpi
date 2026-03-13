@@ -27,7 +27,7 @@ def test_slurm_script_uses_configured_log_dir() -> None:
     )
     rendered = script.render()
     assert "#SBATCH --output=/cluster/logs/run1/scheduler/slurm_%j.out" in rendered
-    assert "#SBATCH --error=/cluster/logs/run1/scheduler/slurm_%j.err" in rendered
+    assert "#SBATCH --error=" not in rendered
 
 
 def test_slurm_script_preserves_tmpdir_bind_expansion() -> None:
@@ -35,7 +35,6 @@ def test_slurm_script_preserves_tmpdir_bind_expansion() -> None:
     script = SlurmJobScript(
         job_name="pace-test",
         output_path="/tmp/out",
-        error_path="/tmp/err",
         resources=ResourcesConfig(),
         apptainer_command=[
             "apptainer",

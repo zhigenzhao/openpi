@@ -14,16 +14,17 @@ services:
       - ${OPENPI_DATA_HOME:-../.cache/openpi}:/openpi_assets
       - ../.cache/huggingface:/opt/.cache/huggingface
       - ../.cache/jax:/root/.cache/jax
+      - /app/.venv
     environment:
       - OPENPI_DATA_HOME=/openpi_assets
       - HF_HOME=/opt/.cache/huggingface
       - IS_DOCKER=true
 
     # Comment out this block if not running on a machine with GPUs.
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 2
+              capabilities: [gpu]

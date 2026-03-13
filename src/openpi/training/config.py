@@ -1046,7 +1046,7 @@ _CONFIGS = [
         save_interval=100,
         keep_period=None,
         batch_size=64,
-        num_workers=64,
+        num_workers=2,
     ),
     # RoboArena & PolaRiS configs.
     *roboarena_config.get_roboarena_configs(),

@@ -12,7 +12,7 @@
 FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS builder
 SHELL ["/bin/bash", "-c"]
 
-COPY --from=ghcr.io/astral-sh/uv:0.5.6 /uv /uvx /bin/
+COPY --from=docker.io/astral/uv:latest /uv /uvx /bin/
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -37,23 +37,33 @@ RUN mkdir -p "$HF_HOME" "$UV_CACHE_DIR"
 
 WORKDIR /app
 
+# Copy lock/metadata first
+COPY pyproject.toml uv.lock /app/
+
+# Copy any local path dependencies that pyproject/lock refers to
+COPY packages/openpi-client /app/packages/openpi-client
+
+# If there are more local packages, copy them too
+# COPY packages/other-local-pkg /app/packages/other-local-pkg
+
+# Force the intended Python version
+RUN uv venv --python 3.11.9 "$UV_PROJECT_ENVIRONMENT"
+
+RUN --mount=type=cache,target=/var/cache/uv \
+    GIT_LFS_SKIP_SMUDGE=1 uv sync --frozen --no-install-project
+
+# Copy the rest of the source only after deps are installed
 COPY . /app
 
-# Match README installation flow inside the container as closely as possible.
-# README:
-#   GIT_LFS_SKIP_SMUDGE=1 uv sync
-#   GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
-RUN uv venv --python 3.11.9 "$UV_PROJECT_ENVIRONMENT"
-RUN --mount=type=cache,target=/var/cache/uv \
-    GIT_LFS_SKIP_SMUDGE=1 uv sync
 RUN --mount=type=cache,target=/var/cache/uv \
     GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
+
 RUN uv cache prune
 
 FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS runtime
 SHELL ["/bin/bash", "-c"]
 
-COPY --from=ghcr.io/astral-sh/uv:0.5.6 /uv /uvx /bin/
+COPY --from=docker.io/astral/uv:latest /uv /uvx /bin/
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     git-lfs \
@@ -63,6 +73,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     ca-certificates \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /.venv /.venv
 COPY --from=builder /.uv /.uv

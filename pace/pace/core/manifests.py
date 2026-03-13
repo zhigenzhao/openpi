@@ -153,6 +153,8 @@ class LaunchPlan:
     environment: dict[str, str]
     binds: list[str]
     image_path: str
+    pre_launch: list[str] = field(default_factory=list)
+    post_launch: list[str] = field(default_factory=list)
 
     def to_yaml(self) -> str:
         """Serialize to YAML string."""
@@ -162,6 +164,8 @@ class LaunchPlan:
     def from_yaml(cls, yaml_str: str) -> LaunchPlan:
         """Deserialize from YAML string."""
         data = yaml.safe_load(yaml_str)
+        data.setdefault("pre_launch", [])
+        data.setdefault("post_launch", [])
         return cls(**data)
 
     def save(self, path: Path) -> None:

@@ -43,7 +43,6 @@ class SlurmJobScript:
 
     job_name: str
     output_path: str
-    error_path: str
     resources: ResourcesConfig
     pre_commands: list[str] = field(default_factory=list)
     staging_commands: list[str] = field(default_factory=list)
@@ -66,7 +65,6 @@ class SlurmJobScript:
         # SBATCH directives
         lines.append(f"#SBATCH --job-name={self.job_name}")
         lines.append(f"#SBATCH --output={self.output_path}")
-        lines.append(f"#SBATCH --error={self.error_path}")
         lines.append(f"#SBATCH --nodes={self.resources.nodes}")
 
         # GPU specification
@@ -139,6 +137,7 @@ class SlurmBackend:
         log_dir: str,
         wrapper_path: str,
         staging_plan: StagingPlan | None = None,
+        pre_apptainer_commands: list[str] | None = None,
     ) -> SlurmJobScript:
         """Create a SLURM job script.
 
@@ -175,9 +174,8 @@ class SlurmBackend:
         return SlurmJobScript(
             job_name=job_name,
             output_path=f"{log_dir}/slurm_%j.out",
-            error_path=f"{log_dir}/slurm_%j.err",
             resources=resources,
-            pre_commands=[],
+            pre_commands=pre_apptainer_commands or [],
             staging_commands=staging_commands,
             apptainer_command=apptainer_cmd,
         )
