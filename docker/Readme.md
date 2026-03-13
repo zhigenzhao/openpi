@@ -18,6 +18,12 @@ From the repository root:
 docker build . -t openpi-env -f docker/openpi.Dockerfile
 ```
 
+Build Apptainer
+
+```bash
+apptainer build openpi.sif docker-daemon://openpi-env:latest
+```
+
 ## Run
 
 ```bash
@@ -37,7 +43,7 @@ docker run --rm -it --network=host --gpus all \
 ## Docker Compose
 
 ```bash
-docker compose -f docker/compose.yml up --build
+docker compose -f docker/compose.yml run openpi
 ```
 
 ## Verify Editable Install

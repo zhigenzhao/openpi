@@ -1036,16 +1036,15 @@ _CONFIGS = [
     ),
     TrainConfig(
         name="pi05_gim_dual_tshirt",
-        model=pi0_config.Pi0Config(pi05=True, action_dim=14, action_horizon=10),
+        model=pi0_config.Pi0Config(pi05=True),
         data=GimDualArmLeRobotDataConfig(
             repo_id="kelvinzhaozg/gim_tshirt_259",
             base_config=DataConfig(prompt_from_task=True),
-            assets=AssetsConfig(
-                assets_dir="gs://openpi-assets/checkpoints/pi05_base/assets/",
-            ),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
         num_train_steps=300000,
+        save_interval=100,
+        keep_period=None,
         batch_size=64,
         num_workers=64,
     ),
