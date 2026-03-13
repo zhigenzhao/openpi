@@ -15,6 +15,7 @@ import numpy as np
 import optax
 import tqdm_loggable.auto as tqdm
 import wandb
+import time
 
 import openpi.models.model as _model
 import openpi.shared.array_typing as at
@@ -217,21 +218,12 @@ def main(config: _config.TrainConfig):
     )
     init_wandb(config, resuming=resuming, enabled=config.wandb_enabled)
 
+    begin_data_loading = time.time()
     data_loader = _data_loader.create_data_loader(
         config,
         sharding=data_sharding,
         shuffle=True,
     )
-    data_iter = iter(data_loader)
-    batch = next(data_iter)
-    logging.info(f"Initialized data loader:\n{training_utils.array_tree_to_info(batch)}")
-
-    # Log images from first batch to sanity check.
-    images_to_log = [
-        wandb.Image(np.concatenate([np.array(img[i]) for img in batch[0].images.values()], axis=1))
-        for i in range(min(5, len(next(iter(batch[0].images.values())))))
-    ]
-    wandb.log({"camera_views": images_to_log}, step=0)
 
     train_state, train_state_sharding = init_train_state(config, init_rng, mesh, resume=resuming)
     jax.block_until_ready(train_state)
@@ -239,6 +231,21 @@ def main(config: _config.TrainConfig):
 
     if resuming:
         train_state = _checkpoints.restore_state(checkpoint_manager, train_state, data_loader)
+        # data_loader.set_state() was called inside restore_state above
+
+    data_iter = iter(data_loader)
+    batch = next(data_iter)
+    end_data_loading = time.time()
+    logging.info(f"Data loading time: {end_data_loading - begin_data_loading:.2f} seconds")
+    logging.info(f"Initialized data loader:\n{training_utils.array_tree_to_info(batch)}")
+
+    # Log images from first batch to sanity check (only on fresh start).
+    if not resuming:
+        images_to_log = [
+            wandb.Image(np.concatenate([np.array(img[i]) for img in batch[0].images.values()], axis=1))
+            for i in range(min(5, len(next(iter(batch[0].images.values())))))
+        ]
+        wandb.log({"camera_views": images_to_log}, step=0)
 
     ptrain_step = jax.jit(
         functools.partial(train_step, config),

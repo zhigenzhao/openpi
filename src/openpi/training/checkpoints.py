@@ -8,8 +8,10 @@ from typing import Protocol
 
 from etils import epath
 import jax
+import numpy as np
 import orbax.checkpoint as ocp
 import orbax.checkpoint.future as future
+import torch
 
 from openpi.shared import array_typing as at
 import openpi.shared.normalize as _normalize
@@ -43,6 +45,7 @@ def initialize_checkpoint_dir(
             "assets": CallbackHandler(),
             "train_state": ocp.PyTreeCheckpointHandler(),
             "params": ocp.PyTreeCheckpointHandler(),
+            "dataloader_state": ocp.PyTreeCheckpointHandler(),
         },
         options=ocp.CheckpointManagerOptions(
             max_to_keep=1,
@@ -68,6 +71,8 @@ def save_state(
     data_loader: _data_loader.DataLoader,
     step: int,
 ):
+    dl_state = data_loader.get_state()
+
     def save_assets(directory: epath.Path):
         # Save the normalization stats.
         data_config = data_loader.data_config()
@@ -83,6 +88,8 @@ def save_state(
         "train_state": train_state,
         "params": {"params": params},
     }
+    if dl_state is not None:
+        items["dataloader_state"] = dl_state
     checkpoint_manager.save(step, items)
 
 
@@ -92,19 +99,30 @@ def restore_state(
     data_loader: _data_loader.DataLoader,
     step: int | None = None,
 ) -> training_utils.TrainState:
-    del data_loader
+    actual_step = step if step is not None else checkpoint_manager.latest_step()
 
     with at.disable_typechecking():
         # Split params that can be used for inference into a separate item.
         train_state, params = _split_params(state)
-        restored = checkpoint_manager.restore(
-            step,
-            items={
-                "train_state": train_state,
-                "params": {"params": params},
-            },
-        )
-    return _merge_params(restored["train_state"], restored["params"])
+        restore_items = {
+            "train_state": train_state,
+            "params": {"params": params},
+        }
+        dl_state_dir = epath.Path(checkpoint_manager.directory) / str(actual_step) / "dataloader_state"
+        if dl_state_dir.exists():
+            gen_state_shape = torch.Generator().get_state().numpy().shape
+            restore_items["dataloader_state"] = {
+                'epoch_start_state': np.zeros(gen_state_shape, dtype=np.uint8),
+                'batch_in_epoch': np.int64(0),
+            }
+        restored = checkpoint_manager.restore(actual_step, items=restore_items)
+
+    train_state = _merge_params(restored["train_state"], restored["params"])
+
+    if "dataloader_state" in restored:
+        data_loader.set_state(restored["dataloader_state"])
+
+    return train_state
 
 
 def load_norm_stats(assets_dir: epath.Path | str, asset_id: str) -> dict[str, _normalize.NormStats] | None:

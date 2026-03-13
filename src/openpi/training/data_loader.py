@@ -435,6 +435,10 @@ class TorchDataLoader:
 
         generator = torch.Generator()
         generator.manual_seed(seed)
+        self._generator = generator
+        self._epoch_start_state: torch.Tensor | None = None
+        self._batch_in_epoch: int = 0
+        self._restored_iter = None
         self._data_loader = torch.utils.data.DataLoader(
             typing.cast(torch.utils.data.Dataset, dataset),
             batch_size=local_batch_size,
@@ -453,10 +457,35 @@ class TorchDataLoader:
     def torch_loader(self) -> torch.utils.data.DataLoader:
         return self._data_loader
 
+    def get_state(self) -> dict | None:
+        if self._epoch_start_state is None:
+            return None
+        return {
+            'epoch_start_state': self._epoch_start_state.numpy(),
+            'batch_in_epoch': np.int64(self._batch_in_epoch),
+        }
+
+    def set_state(self, state: dict) -> None:
+        epoch_start_state = torch.from_numpy(state['epoch_start_state'])
+        batch_in_epoch = int(state['batch_in_epoch'])
+        self._generator.set_state(epoch_start_state)
+        self._epoch_start_state = epoch_start_state
+        torch_iter = iter(self._data_loader)
+        for _ in range(batch_in_epoch - 1):
+            next(torch_iter)
+        self._restored_iter = torch_iter
+        self._batch_in_epoch = batch_in_epoch - 1
+
     def __iter__(self):
         num_items = 0
         while True:
-            data_iter = iter(self._data_loader)
+            if self._restored_iter is not None:
+                data_iter = self._restored_iter
+                self._restored_iter = None
+            else:
+                self._epoch_start_state = self._generator.get_state()
+                self._batch_in_epoch = 0
+                data_iter = iter(self._data_loader)
             while True:
                 if self._num_batches is not None and num_items >= self._num_batches:
                     return
@@ -464,6 +493,7 @@ class TorchDataLoader:
                     batch = next(data_iter)
                 except StopIteration:
                     break  # We've exhausted the dataset. Create a new iterator and start over.
+                self._batch_in_epoch += 1
                 num_items += 1
                 # For JAX, convert to sharded arrays; for PyTorch, return torch tensors
                 if self._sharding is not None:
@@ -538,6 +568,15 @@ class DataLoaderImpl(DataLoader):
 
     def data_config(self) -> _config.DataConfig:
         return self._data_config
+
+    def get_state(self) -> dict | None:
+        if isinstance(self._data_loader, TorchDataLoader):
+            return self._data_loader.get_state()
+        return None
+
+    def set_state(self, state: dict) -> None:
+        if isinstance(self._data_loader, TorchDataLoader):
+            self._data_loader.set_state(state)
 
     def __iter__(self):
         for batch in self._data_loader:
