@@ -51,7 +51,7 @@ def create_teleop_controller(args: Args, environment: _env.GIMRealEnvironment):
     try:
         teleop_controller = GIMDualArmOpenPITeleopController(
             environment=environment,
-            scale_factor=1.0,
+            scale_factor=1.5,
             enable_log_data=False,
         )
 

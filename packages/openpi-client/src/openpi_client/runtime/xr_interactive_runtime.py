@@ -322,9 +322,24 @@ class XRInteractiveRuntime:
         if self._is_paused:
             print("Runtime PAUSED (XR)")
             logging.info("Runtime PAUSED (XR)")
+            # Deactivate teleop and clear all stale state when pausing.
+            with self._teleop_lock:
+                if self._teleop_active:
+                    self._teleop_active = False
+                    print("[XR Teleop] Teleoperation DEACTIVATED (paused)")
+                    logging.info("Teleoperation deactivated due to pause")
+            # Full reset: VR refs, placo state, cached actions
+            self._teleop_controller.reset_teleop_state()
+            if hasattr(self._environment, "reset_filter_state"):
+                self._environment.reset_filter_state()
         else:
             print("Runtime RESUMED (XR)")
             logging.info("Runtime RESUMED (XR)")
+            # Full reset on resume so policy/teleop starts from actual robot state
+            self._teleop_controller.reset_teleop_state()
+            self._agent.reset()
+            if hasattr(self._environment, "reset_filter_state"):
+                self._environment.reset_filter_state()
 
     def _new_episode(self) -> None:
         """Restart the current episode."""
@@ -347,6 +362,12 @@ class XRInteractiveRuntime:
     def _update_teleop_state(self, left_grip: float, right_grip: float) -> None:
         """Update teleoperation state based on grip button values."""
         with self._teleop_lock:
+            # Don't process teleop state transitions while paused.
+            # execute_step() never runs while paused, so activating teleop would
+            # set VR references that become stale by the time the robot resumes.
+            if self._is_paused:
+                return
+
             # Check if grips are pressed above threshold
             left_grip_pressed = left_grip > self._grip_threshold
             right_grip_pressed = right_grip > self._grip_threshold
@@ -355,22 +376,24 @@ class XRInteractiveRuntime:
             was_active = self._teleop_active
             self._teleop_active = left_grip_pressed or right_grip_pressed
 
-            # Log state changes
+            # Handle state transitions with full reset to prevent stale values
             if self._teleop_active and not was_active:
-                print("[XR Teleop] Teleoperation ACTIVATED - Syncing end effector poses.")
-                logging.info("Teleoperation activated via grip buttons - syncing end effector poses to placo tasks.")
-                # Reset filters to avoid velocity/acceleration spike from source transition
+                print("[XR Teleop] Teleoperation ACTIVATED")
+                logging.info("Teleoperation activated via grip buttons")
                 if hasattr(self._environment, "reset_filter_state"):
                     self._environment.reset_filter_state()
-                # Sync end effector poses to placo tasks for smooth teleop initialization
-                self._teleop_controller.sync_end_effector_poses_to_placo_tasks()
+                # Full reset: clears VR refs, grip tracking, cached actions,
+                # syncs placo to actual robot, and resets task targets
+                self._teleop_controller.reset_teleop_state()
                 self._agent.reset()
             elif not self._teleop_active and was_active:
                 print("[XR Teleop] Teleoperation DEACTIVATED - Policy RESUMED")
                 logging.info("Teleoperation deactivated - policy resumed")
-                # Reset filters to avoid velocity/acceleration spike from source transition
                 if hasattr(self._environment, "reset_filter_state"):
                     self._environment.reset_filter_state()
+                # Full reset so no stale state leaks into next teleop activation
+                self._teleop_controller.reset_teleop_state()
+                self._agent.reset()
 
     def _run_teleop_step(self):
         """Execute one teleoperation step and return the computed action.

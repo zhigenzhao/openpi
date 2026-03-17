@@ -116,6 +116,30 @@ class GIMDualArmOpenPITeleopController(OpenPITeleopController):
         except Exception as e:
             logging.debug(f"Error force-syncing placo state: {e}")
 
+    def reset_teleop_state(self):
+        """Clear all mutable teleop state to prevent spring-back from stale values.
+
+        This resets: VR reference poses, per-arm activation tracking, cached actions,
+        and forces placo to re-sync from the actual robot position.
+        """
+        # Clear VR reference poses (base class)
+        for name in self.manipulator_config:
+            self.ref_ee_xyz[name] = None
+            self.ref_ee_quat[name] = None
+            self.ref_controller_xyz[name] = None
+            self.ref_controller_quat[name] = None
+
+        # Clear per-arm grip activation tracking so next execute_step triggers sync
+        self._grip_was_active.clear()
+
+        # Clear cached action
+        with self._action_lock:
+            self._latest_action = None
+
+        # Sync placo joints from actual robot and reset task targets
+        self._force_sync_placo_state()
+        super().sync_end_effector_poses_to_placo_tasks()
+
     def sync_end_effector_poses_to_placo_tasks(self):
         """Force state sync before syncing task targets to avoid stale FK."""
         self._force_sync_placo_state()
