@@ -23,7 +23,7 @@ class Args:
     port: int = 8000
 
     action_horizon: int = 50
-    execution_horizon: int = 10
+    execution_horizon: int = 12
     inference_delay: int = 6
 
     num_episodes: int = 1

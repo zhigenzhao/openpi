@@ -19,7 +19,7 @@ class XRInteractiveRuntime:
 
     Supports the following XR controller commands:
     - 'X' button: Pause/Resume toggle
-    - 'Y' button: Start new episode (restart current episode)
+    - 'Y' button: Save current episode as failed and quit
     - 'Menu' button: Quit current episode
 
     Requires xrobotoolkit_sdk to be installed and XR device connected.
@@ -98,7 +98,7 @@ class XRInteractiveRuntime:
         print("XR Interactive Runtime: Left(X/Y/Menu) or Right(A/B/Menu) for pause/resume, new episode, quit")
         print("Hold grip buttons for teleoperation control")
         if self._enable_log_data:
-            print("Data logging enabled - press 'B' to start/stop, right stick click to discard")
+            print("Data logging enabled - press 'B' to start/stop, right stick click to save as failed")
 
         try:
             # Use teleop controller's XR client (which initializes the SDK)
@@ -276,7 +276,8 @@ class XRInteractiveRuntime:
                     self._handle_pause_command()
 
                 if left_y_button and not self._last_left_y_button_state:
-                    print("\n[XR] Left Y button pressed (new episode)")
+                    print("\n[XR] Left Y button pressed (quit)")
+                    self._save_failed_logging()
                     self._handle_quit_command()
 
                 # Handle B button for data logging toggle
@@ -284,10 +285,10 @@ class XRInteractiveRuntime:
                     print("\n[XR] Right B button pressed (toggle logging)")
                     self._toggle_logging()
 
-                # Handle right stick click to discard logged data
+                # Handle right stick click to save logged data as failed episode
                 right_axis_click = xr_client.get_button_state_by_name("right_axis_click")
                 if right_axis_click and self._is_logging:
-                    self._discard_logging()
+                    self._save_failed_logging()
 
                 # Update button state history for both controllers
                 self._last_left_x_button_state = left_x_button
@@ -577,24 +578,29 @@ class XRInteractiveRuntime:
             print("--- Stopped data logging ---")
             logging.info("Data logging stopped")
 
-    def _discard_logging(self) -> None:
-        """Discard current logged data without saving."""
+    def _save_failed_logging(self) -> None:
+        """Save current logged data as a failed episode."""
         if self._is_logging:
-            self._episode_data = []
+            self._save_episode_data(subdir="fails")
             self._is_logging = False
-            print("--- Discarded data logging ---")
-            logging.info("Data logging discarded")
+            print("--- Saved failed episode data ---")
+            logging.info("Failed episode data saved")
 
-    def _save_episode_data(self) -> None:
-        """Save current episode data to pkl file."""
+    def _save_episode_data(self, subdir: str | None = None) -> None:
+        """Save current episode data to pkl file.
+
+        Args:
+            subdir: Optional subdirectory under log_dir (e.g. "fails" for failed episodes).
+        """
         if not self._episode_data:
             logging.info("No data to save")
             return
 
         try:
-            self._log_dir.mkdir(parents=True, exist_ok=True)
+            save_dir = self._log_dir / subdir if subdir else self._log_dir
+            save_dir.mkdir(parents=True, exist_ok=True)
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            filename = self._log_dir / f"rollout_{timestamp}.pkl"
+            filename = save_dir / f"rollout_{timestamp}.pkl"
 
             with open(filename, "wb") as f:
                 pickle.dump(self._episode_data, f)
