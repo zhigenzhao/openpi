@@ -23,8 +23,8 @@ class Args:
     port: int = 8000
 
     action_horizon: int = 50
-    execution_horizon: int = 20
-    inference_delay: int = 10
+    execution_horizon: int = 10
+    inference_delay: int = 6
 
     num_episodes: int = 1
     max_episode_steps: int = 10000000
@@ -100,7 +100,13 @@ def main(args: Args) -> None:
         log_freq=args.log_freq,
     )
 
-    xr_interactive_runtime.run()
+    try:
+        xr_interactive_runtime.run()
+    except KeyboardInterrupt:
+        logging.info("Interrupted by user.")
+    finally:
+        logging.info("Shutting down, returning to zero...")
+        environment.shutdown()
 
 
 if __name__ == "__main__":

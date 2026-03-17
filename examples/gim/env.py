@@ -44,3 +44,12 @@ class GIMRealEnvironment(_environment.Environment):
     @override
     def apply_action(self, action: dict) -> None:
         self._ts = self._env.step(action["actions"])
+
+    def get_hardware_readings(self) -> dict:
+        return self._env.get_hardware_readings()
+
+    def reset_filter_state(self) -> None:
+        self._env.reset_filter_state()
+
+    def shutdown(self) -> None:
+        self._env.shutdown()

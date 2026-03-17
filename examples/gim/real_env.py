@@ -1,4 +1,5 @@
 import collections
+import logging
 import threading
 import time
 
@@ -42,8 +43,8 @@ class RealEnv:
         camera_fps: int = 60,
         *,
         enable_depth: bool = False,
-        auto_exposure: bool = False,
-        exposure: int = 10000,
+        auto_exposure: bool = True,
+        # exposure: int = 10000,
         gain: int = 16,
     ):
         self.can_port_left = can_port_left
@@ -57,7 +58,7 @@ class RealEnv:
             serial_numbers=camera_serial_numbers,
             enable_depth=enable_depth,
             auto_exposure=auto_exposure,
-            exposure=exposure,
+            # exposure=exposure,
             gain=gain,
         )
         self.camera_interface.start()
@@ -78,10 +79,12 @@ class RealEnv:
             control_rate_hz=float(CONTROL_HZ),
         )
 
-        self.controller_left = GimArmController(left_config, start_thread=False)
-        self.controller_right = GimArmController(right_config, start_thread=False)
-        self.controller_left.set_control_mode(ControlMode.MOMENTUM_OBSERVER)
-        self.controller_right.set_control_mode(ControlMode.MOMENTUM_OBSERVER)
+        self.controller_left = GimArmController(left_config)
+        self.controller_right = GimArmController(right_config)
+        self.controller_left.start(return_to_zero=True, start_thread=False)
+        self.controller_right.start(return_to_zero=True, start_thread=False)
+        self.controller_left.set_mode(ControlMode.MOMENTUM_OBSERVER)
+        self.controller_right.set_mode(ControlMode.MOMENTUM_OBSERVER)
 
         # Butterworth filters for velocity and acceleration (per arm)
         self.vel_filter_left = ButterworthFilter(cutoff_hz=4.0, dt=1.0 / CONTROL_HZ, size=7)
@@ -203,11 +206,46 @@ class RealEnv:
         obs["images"] = self.get_images()
         return obs
 
+    def get_hardware_readings(self):
+        """Get raw hardware readings (velocity, effort, external torque) from both arms."""
+        result = {}
+        for arm_name, controller in [("left_arm", self.controller_left), ("right_arm", self.controller_right)]:
+            reading = controller.get_reading()
+            if reading is not None:
+                result[arm_name] = {
+                    "velocity": reading.velocity.tolist(),
+                    "effort": reading.effort.tolist(),
+                    "external_torque": reading.external_torque.tolist() if reading.external_torque is not None else None,
+                }
+        return result
+
+    def reset_filter_state(self):
+        """Reset filters and previous-state trackers to current targets.
+
+        Call on control source transitions (policy<->teleop) to avoid
+        velocity/acceleration spikes from the step change in targets.
+        """
+        with self._lock:
+            self.prev_joints_left = self._target_left.copy()
+            self.prev_joints_right = self._target_right.copy()
+        self.prev_velocities_left = np.zeros(7)
+        self.prev_velocities_right = np.zeros(7)
+        # ButterworthFilter has no reset(); zero out internal state directly
+        for filt in (self.vel_filter_left, self.vel_filter_right,
+                     self.accel_filter_left, self.accel_filter_right):
+            filt.x1[:] = 0.0
+            filt.x2[:] = 0.0
+            filt.y1[:] = 0.0
+            filt.y2[:] = 0.0
+
     def get_reward(self):
         return 0
 
     def _reset_joints(self):
         """Move arms to zero position."""
+        # Pump one step to populate the reading cache before move_to_position
+        self.controller_left.step(self.dt)
+        self.controller_right.step(self.dt)
         self.controller_left.move_to_position(np.zeros(6))
         self.controller_right.move_to_position(np.zeros(6))
         time.sleep(2.0)
@@ -275,15 +313,34 @@ class RealEnv:
             step_type=dm_env.StepType.MID, reward=self.get_reward(), discount=None, observation=self.get_observation()
         )
 
-    def __del__(self):
-        """Clean up resources."""
+    def shutdown(self):
+        """Return arms to zero and release all hardware resources."""
         self._stop_control_thread()
+        try:
+            # Pump one step to populate reading cache
+            self.controller_left.step(self.dt)
+            self.controller_right.step(self.dt)
+            # Smooth return to zero (quintic interpolation, blocks ~2s each)
+            self.controller_left.return_to_zero(duration=2.0)
+            self.controller_right.return_to_zero(duration=2.0)
+            # Wait for motion to fully settle
+            time.sleep(5)
+            # Hold position before releasing hardware
+            self.controller_left.set_mode(ControlMode.IDLE)
+            self.controller_right.set_mode(ControlMode.IDLE)
+        except Exception as e:
+            logging.warning(f"Error during return-to-zero: {e}")
+        # Release hardware
         if hasattr(self, "controller_left"):
             self.controller_left.stop()
         if hasattr(self, "controller_right"):
             self.controller_right.stop()
         if hasattr(self, "camera_interface"):
             self.camera_interface.stop()
+
+    def __del__(self):
+        """Clean up resources."""
+        self.shutdown()
 
 
 def make_real_env(
@@ -295,8 +352,8 @@ def make_real_env(
     camera_fps: int = 60,
     *,
     enable_depth: bool = False,
-    auto_exposure: bool = False,
-    exposure: int = 10000,
+    auto_exposure: bool = True,
+    # exposure: int = 10000,
     gain: int = 16,
 ) -> RealEnv:
     """Factory function to create RealEnv instance."""
@@ -311,6 +368,6 @@ def make_real_env(
         camera_fps=camera_fps,
         enable_depth=enable_depth,
         auto_exposure=auto_exposure,
-        exposure=exposure,
+        # exposure=exposure,
         gain=gain,
     )

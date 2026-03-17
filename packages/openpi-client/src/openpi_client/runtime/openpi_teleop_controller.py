@@ -11,6 +11,7 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
+import meshcat.transformations as tf
 import numpy as np
 from xrobotoolkit_teleop.common.base_teleop_controller import BaseTeleopController
 from xrobotoolkit_teleop.utils.geometry import R_HEADSET_TO_WORLD
@@ -35,6 +36,7 @@ class OpenPITeleopController(BaseTeleopController):
         floating_base: bool = False,
         R_headset_world: np.ndarray = R_HEADSET_TO_WORLD,
         scale_factor: float = 1.0,
+        angular_scale_factor: float = 1.0,
         q_init: Optional[np.ndarray] = None,
         dt: float = 1.0 / 50.0,  # 50Hz control rate
         enable_log_data: bool = False,
@@ -50,6 +52,7 @@ class OpenPITeleopController(BaseTeleopController):
             floating_base: Whether robot has floating base
             R_headset_world: Rotation matrix from headset to world frame
             scale_factor: Scaling factor for controller movements
+            angular_scale_factor: Scaling factor for angular movements
             q_init: Initial joint configuration
             dt: Control timestep
             enable_log_data: Whether to enable data logging
@@ -77,6 +80,7 @@ class OpenPITeleopController(BaseTeleopController):
             floating_base=floating_base,
             R_headset_world=R_headset_world,
             scale_factor=scale_factor,
+            angular_scale_factor=angular_scale_factor,
             q_init=q_init,
             dt=dt,
             enable_log_data=enable_log_data,
@@ -152,8 +156,6 @@ class OpenPITeleopController(BaseTeleopController):
             position = T_world_link[:3, 3]
 
             # Convert rotation matrix to quaternion (w, x, y, z)
-            import meshcat.transformations as tf
-
             quaternion = tf.quaternion_from_matrix(T_world_link)
 
             return position, quaternion

@@ -44,12 +44,14 @@ def main(args: Args) -> None:
     )
     logging.info(f"Server metadata: {ws_client_policy.get_server_metadata()}")
 
+    environment = _env.GIMRealEnvironment(
+        can_port_left=args.can_port_left,
+        can_port_right=args.can_port_right,
+        camera_serial_numbers=args.camera_serials,
+    )
+
     runtime = _runtime.Runtime(
-        environment=_env.GIMRealEnvironment(
-            can_port_left=args.can_port_left,
-            can_port_right=args.can_port_right,
-            camera_serial_numbers=args.camera_serials,
-        ),
+        environment=environment,
         agent=_policy_agent.PolicyAgent(
             policy=action_chunk_broker.RealTimeActionChunkBroker(
                 policy=ws_client_policy,
@@ -64,7 +66,13 @@ def main(args: Args) -> None:
         max_episode_steps=args.max_episode_steps,
     )
 
-    runtime.run()
+    try:
+        runtime.run()
+    except KeyboardInterrupt:
+        logging.info("Interrupted by user.")
+    finally:
+        logging.info("Shutting down, returning to zero...")
+        environment.shutdown()
 
 
 if __name__ == "__main__":

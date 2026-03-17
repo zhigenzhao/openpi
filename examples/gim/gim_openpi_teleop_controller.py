@@ -13,6 +13,8 @@ import numpy as np
 from openpi_client.runtime import environment as _environment
 from openpi_client.runtime.openpi_teleop_controller import OpenPITeleopController
 
+from examples.gim.robot_utils import DEFAULT_GRIPPER_OPEN
+
 R_HEADSET_TO_WORLD = np.array([[0, 0, -1], [-1, 0, 0], [0, 1, 0]])
 ASSET_PATH = str(Path(__file__).resolve().parent / "assets")
 
@@ -61,6 +63,8 @@ class GIMDualArmOpenPITeleopController(OpenPITeleopController):
 
         q_init = None
 
+        self._grip_was_active: dict[str, bool] = {}
+
         super().__init__(
             environment=environment,
             robot_urdf_path=robot_urdf_path,
@@ -100,21 +104,39 @@ class GIMDualArmOpenPITeleopController(OpenPITeleopController):
         logging.warning(f"URDF not found at {urdf_path}")
         return None
 
-    def _update_robot_state(self):
-        """Update robot state from GIM dual arm environment observations."""
+    def _force_sync_placo_state(self):
+        """Unconditionally sync Placo joint state from environment and recompute FK."""
         try:
             obs = self._environment.get_observation()
             joint_positions = np.array(obs["state"])
-
             if len(joint_positions) == 14:
-                left_arm_joints = joint_positions[:6]
-                right_arm_joints = joint_positions[7:13]
-
-                self.placo_robot.state.q[self.placo_arm_joint_slice["left_arm"]] = left_arm_joints
-                self.placo_robot.state.q[self.placo_arm_joint_slice["right_arm"]] = right_arm_joints
-
+                self.placo_robot.state.q[self.placo_arm_joint_slice["left_arm"]] = joint_positions[:6]
+                self.placo_robot.state.q[self.placo_arm_joint_slice["right_arm"]] = joint_positions[7:13]
+                self.placo_robot.update_kinematics()
         except Exception as e:
-            logging.debug(f"Error updating robot state from environment: {e}")
+            logging.debug(f"Error force-syncing placo state: {e}")
+
+    def sync_end_effector_poses_to_placo_tasks(self):
+        """Force state sync before syncing task targets to avoid stale FK."""
+        self._force_sync_placo_state()
+        super().sync_end_effector_poses_to_placo_tasks()
+
+    def _update_robot_state(self):
+        """Sync Placo from environment only on grip activation (inactive->active).
+
+        During normal operation the IK model evolves independently via the solver.
+        Sync happens on grip activation so VR deltas start from actual arm position.
+        """
+        for arm_name, config in self.manipulator_config.items():
+            grip_val = self.xr_client.get_key_value_by_name(config["control_trigger"])
+            grip_active = grip_val > 0.9
+
+            was_active = self._grip_was_active.get(arm_name, False)
+            self._grip_was_active[arm_name] = grip_active
+
+            if grip_active and not was_active:
+                # Grip just activated — sync Placo from environment
+                self._force_sync_placo_state()
 
     def _placo_to_env_action(self) -> dict[str, Any]:
         """Convert Placo joint targets to GIM dual arm environment action format."""
@@ -125,7 +147,7 @@ class GIMDualArmOpenPITeleopController(OpenPITeleopController):
             action_array[:6] = self.placo_robot.state.q[self.placo_arm_joint_slice["left_arm"]]
             action_array[7:13] = self.placo_robot.state.q[self.placo_arm_joint_slice["right_arm"]]
 
-            # Add gripper commands with GIM-specific normalization
+            # Add gripper commands — normalize to match real_env convention (1=open, 0=closed)
             for arm_name, gripper_idx in [("left_arm", 6), ("right_arm", 13)]:
                 if arm_name in self.gripper_pos_target:
                     gripper_config = self.manipulator_config[arm_name]["gripper_config"]
@@ -133,9 +155,8 @@ class GIMDualArmOpenPITeleopController(OpenPITeleopController):
                     if joint_name in self.gripper_pos_target[arm_name]:
                         target = self.gripper_pos_target[arm_name][joint_name]
                         open_pos = gripper_config["open_pos"][0]  # -0.20
-                        close_pos = gripper_config["close_pos"][0]  # 0.0
-                        # (target - (-0.2)) / (0.0 - (-0.2)) -> 0=open, 1=closed
-                        normalized = (target - open_pos) / (close_pos - open_pos)
+                        # target / open_pos: -0.20 -> 1.0 (open), 0.0 -> 0.0 (closed)
+                        normalized = target / open_pos
                         action_array[gripper_idx] = np.clip(normalized, 0.0, 1.0)
 
             return {"actions": action_array}
@@ -160,39 +181,62 @@ class GIMDualArmOpenPITeleopController(OpenPITeleopController):
             obs = self._environment.get_observation()
             joint_positions = np.array(obs["state"])
 
-            if len(joint_positions) == 14:
-                robot_state = {
-                    "qpos": {
-                        "left_arm": joint_positions[:6],
-                        "left_gripper": joint_positions[6:7],
-                        "right_arm": joint_positions[7:13],
-                        "right_gripper": joint_positions[13:14],
-                    },
-                    "qpos_des": {
-                        "left_arm": self.placo_robot.state.q[self.placo_arm_joint_slice["left_arm"]].copy(),
-                        "right_arm": self.placo_robot.state.q[self.placo_arm_joint_slice["right_arm"]].copy(),
-                    },
-                    "gripper_target": {
-                        "left_arm": (
-                            self.gripper_pos_target.get("left_arm", {}).copy()
-                            if "left_arm" in self.gripper_pos_target
-                            else None
-                        ),
-                        "right_arm": (
-                            self.gripper_pos_target.get("right_arm", {}).copy()
-                            if "right_arm" in self.gripper_pos_target
-                            else None
-                        ),
-                    },
-                }
-            else:
+            if len(joint_positions) != 14:
                 logging.warning(f"Unexpected joint positions length: {len(joint_positions)}")
-                robot_state = {"qpos": {}, "qpos_des": {}, "gripper_target": {}}
+                return {}
 
-            robot_state["images"] = {
-                "top_image": self._compress_image_to_jpg(obs["top_image"]),
-                "right_wrist_image": self._compress_image_to_jpg(obs["right_wrist_image"]),
-                "left_wrist_image": self._compress_image_to_jpg(obs["left_wrist_image"]),
+            # Denormalize gripper: observation has normalized (0-1), log needs raw (-0.2 to 0.0)
+            left_qpos = joint_positions[:7].copy()
+            left_qpos[6] *= DEFAULT_GRIPPER_OPEN
+            right_qpos = joint_positions[7:14].copy()
+            right_qpos[6] *= DEFAULT_GRIPPER_OPEN
+
+            robot_state = {
+                "qpos": {
+                    "left_arm": left_qpos.tolist(),
+                    "right_arm": right_qpos.tolist(),
+                },
+                "qpos_target": {
+                    "left_arm": self.placo_robot.state.q[self.placo_arm_joint_slice["left_arm"]].copy().tolist(),
+                    "right_arm": self.placo_robot.state.q[self.placo_arm_joint_slice["right_arm"]].copy().tolist(),
+                },
+                "gripper_target": {},
+                "grip_active": {
+                    arm_name: self.active.get(arm_name, False)
+                    for arm_name in self.manipulator_config
+                },
+            }
+
+            # Gripper targets (scalar per arm, already raw from gripper_pos_target)
+            for arm_name in ("left_arm", "right_arm"):
+                gripper_target = 0.0
+                gripper_config = self.manipulator_config[arm_name].get("gripper_config")
+                if gripper_config:
+                    joint_name = gripper_config["joint_names"][0]
+                    if arm_name in self.gripper_pos_target and joint_name in self.gripper_pos_target[arm_name]:
+                        gripper_target = self.gripper_pos_target[arm_name][joint_name]
+                robot_state["gripper_target"][arm_name] = gripper_target
+
+            # Hardware readings
+            hw_readings = self._environment.get_hardware_readings()
+            robot_state["qvel"] = {}
+            robot_state["effort"] = {}
+            for arm_name, reading in hw_readings.items():
+                robot_state["qvel"][arm_name] = reading["velocity"]
+                robot_state["effort"][arm_name] = reading["effort"]
+                if reading["external_torque"] is not None:
+                    if "external_torque" not in robot_state:
+                        robot_state["external_torque"] = {}
+                    robot_state["external_torque"][arm_name] = reading["external_torque"]
+
+            # Control mode
+            robot_state["control_mode"] = self._environment._env.controller_left.get_mode().name
+
+            # Images
+            robot_state["image"] = {
+                "top": {"color": self._compress_image_to_jpg(obs["top_image"])},
+                "right_wrist": {"color": self._compress_image_to_jpg(obs["right_wrist_image"])},
+                "left_wrist": {"color": self._compress_image_to_jpg(obs["left_wrist_image"])},
             }
 
             return robot_state

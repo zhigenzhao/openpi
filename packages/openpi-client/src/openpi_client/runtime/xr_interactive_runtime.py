@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from examples.gim.robot_utils import DEFAULT_GRIPPER_OPEN
 from openpi_client.runtime import agent as _agent
 from openpi_client.runtime import environment as _environment
 from openpi_client.runtime import subscriber as _subscriber
@@ -358,12 +359,18 @@ class XRInteractiveRuntime:
             if self._teleop_active and not was_active:
                 print("[XR Teleop] Teleoperation ACTIVATED - Syncing end effector poses.")
                 logging.info("Teleoperation activated via grip buttons - syncing end effector poses to placo tasks.")
+                # Reset filters to avoid velocity/acceleration spike from source transition
+                if hasattr(self._environment, "reset_filter_state"):
+                    self._environment.reset_filter_state()
                 # Sync end effector poses to placo tasks for smooth teleop initialization
                 self._teleop_controller.sync_end_effector_poses_to_placo_tasks()
                 self._agent.reset()
             elif not self._teleop_active and was_active:
                 print("[XR Teleop] Teleoperation DEACTIVATED - Policy RESUMED")
                 logging.info("Teleoperation deactivated - policy resumed")
+                # Reset filters to avoid velocity/acceleration spike from source transition
+                if hasattr(self._environment, "reset_filter_state"):
+                    self._environment.reset_filter_state()
 
     def _run_teleop_step(self):
         """Execute one teleoperation step and return the computed action.
@@ -475,25 +482,36 @@ class XRInteractiveRuntime:
             joint_positions = np.array(observation["state"])
             action_array = np.array(action["actions"])
 
-            # Format to match existing teleop data structure for compatibility
-            # with convert_dual_arm_data_to_lerobot.py
+            # Denormalize gripper values: observation has normalized (0-1), log needs raw
+            left_qpos = np.concatenate([joint_positions[:6], [joint_positions[6] * DEFAULT_GRIPPER_OPEN]])
+            right_qpos = np.concatenate([joint_positions[7:13], [joint_positions[13] * DEFAULT_GRIPPER_OPEN]])
+
+            # Get per-arm grip active state from teleop controller
+            grip_active = {"left_arm": False, "right_arm": False}
+            if source == "teleop" and self._teleop_controller is not None and hasattr(self._teleop_controller, "active"):
+                grip_active = {
+                    arm_name: self._teleop_controller.active.get(arm_name, False)
+                    for arm_name in grip_active
+                }
+
             log_entry = {
                 "timestamp": timestamp,
                 "source": source,
                 "qpos": {
-                    "left_arm": np.concatenate([joint_positions[:6], joint_positions[6:7]]),
-                    "right_arm": np.concatenate([joint_positions[7:13], joint_positions[13:14]]),
+                    "left_arm": left_qpos.tolist(),
+                    "right_arm": right_qpos.tolist(),
                 },
-                "qpos_des": {
-                    "left_arm": action_array[:6],
-                    "right_arm": action_array[7:13],
+                "qpos_target": {
+                    "left_arm": action_array[:6].tolist(),
+                    "right_arm": action_array[7:13].tolist(),
                 },
                 "gripper_target": {
-                    "left_arm": {"left_gripper": action_array[6] * 4.9},
-                    "right_arm": {"right_gripper": action_array[13] * 4.9},
+                    "left_arm": float(action_array[6] * DEFAULT_GRIPPER_OPEN),
+                    "right_arm": float(action_array[13] * DEFAULT_GRIPPER_OPEN),
                 },
+                "grip_active": grip_active,
                 "image": {
-                    "base": {"color": self._compress_image_to_jpg(observation.get("base_image"))},
+                    "top": {"color": self._compress_image_to_jpg(observation.get("top_image"))},
                     "left_wrist": {"color": self._compress_image_to_jpg(observation.get("left_wrist_image"))},
                     "right_wrist": {"color": self._compress_image_to_jpg(observation.get("right_wrist_image"))},
                 },
