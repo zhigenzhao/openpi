@@ -1038,7 +1038,7 @@ _CONFIGS = [
         name="pi05_gim_dual_tshirt",
         model=pi0_config.Pi0Config(pi05=True),
         data=GimDualArmLeRobotDataConfig(
-            repo_id="kelvinzhaozg/gim_tshirt_259",
+            repo_id="kelvinzhaozg/gim_tshirt_dagger_413",
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
