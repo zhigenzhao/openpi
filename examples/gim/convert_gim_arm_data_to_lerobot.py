@@ -164,10 +164,11 @@ def populate_dataset(
         with pkl_file.open("rb") as f:
             episode_data = pickle.load(f)
 
+        skip_inactive = active_only and pkl_file.stem.startswith("teleop")
         frame_count = 0
         gripper_history: collections.deque = collections.deque(maxlen=GRIPPER_LAG_STEPS)
         for step_data in episode_data:
-            if active_only:
+            if skip_inactive:
                 grip = step_data["grip_active"]
                 if not grip["left_arm"] and not grip["right_arm"]:
                     # Update history even for skipped steps so gaps don't create stale values
