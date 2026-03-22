@@ -468,13 +468,43 @@ class TorchDataLoader:
     def set_state(self, state: dict) -> None:
         epoch_start_state = torch.from_numpy(state['epoch_start_state'])
         batch_in_epoch = int(state['batch_in_epoch'])
-        self._generator.set_state(epoch_start_state)
         self._epoch_start_state = epoch_start_state
-        torch_iter = iter(self._data_loader)
-        for _ in range(batch_in_epoch - 1):
-            next(torch_iter)
-        self._restored_iter = torch_iter
         self._batch_in_epoch = batch_in_epoch - 1
+
+        dl = self._data_loader
+        n = len(dl.dataset)
+        bs = dl.batch_size
+
+        # Reproduce the epoch's index permutation without loading any data.
+        if isinstance(dl.sampler, torch.utils.data.RandomSampler):
+            temp_gen = torch.Generator()
+            temp_gen.set_state(epoch_start_state)
+            perm = torch.randperm(n, generator=temp_gen)
+            # Advance the main generator past this epoch so future epochs use the correct state.
+            # RandomSampler.__iter__ calls torch.randperm twice per epoch: once for the actual
+            # permutation and once more at epoch end (a [:0] slice that still consumes the generator).
+            self._generator.set_state(epoch_start_state)
+            torch.randperm(n, generator=self._generator)
+            torch.randperm(n, generator=self._generator)
+        else:
+            perm = torch.arange(n)
+
+        # batch_in_epoch counts how many batches have been yielded by next(); the last one was
+        # prefetched but not yet trained on. Replay from that prefetched batch so the caller
+        # sees the same data it would have seen next without restoration.
+        remaining_indices = perm[(batch_in_epoch - 1) * bs :].tolist()
+        self._restored_iter = iter(
+            torch.utils.data.DataLoader(
+                dl.dataset,
+                batch_size=bs,
+                sampler=remaining_indices,
+                num_workers=dl.num_workers,
+                multiprocessing_context=dl.multiprocessing_context,
+                persistent_workers=dl.num_workers > 0,
+                collate_fn=dl.collate_fn,
+                drop_last=True,
+            )
+        )
 
     def __iter__(self):
         num_items = 0
@@ -483,9 +513,12 @@ class TorchDataLoader:
                 data_iter = self._restored_iter
                 self._restored_iter = None
             else:
-                self._epoch_start_state = self._generator.get_state()
                 self._batch_in_epoch = 0
                 data_iter = iter(self._data_loader)
+                # Capture state AFTER iter() because DataLoader draws a worker seed
+                # from the generator in _BaseDataLoaderIter.__init__, which advances
+                # the generator before the epoch's randperm is called.
+                self._epoch_start_state = self._generator.get_state()
             while True:
                 if self._num_batches is not None and num_items >= self._num_batches:
                     return

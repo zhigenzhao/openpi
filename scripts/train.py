@@ -271,8 +271,18 @@ def main(config: _config.TrainConfig):
             stacked_infos = common_utils.stack_forest(infos)
             reduced_info = jax.device_get(jax.tree.map(jnp.mean, stacked_infos))
             info_str = ", ".join(f"{k}={v:.4f}" for k, v in reduced_info.items())
-            pbar.write(f"Step {step}: {info_str}")
-            wandb.log(reduced_info, step=step)
+            mem_parts = []
+            mem_log = {}
+            for device in jax.local_devices():
+                stats = device.memory_stats()
+                used = stats["bytes_in_use"] / 1024**3
+                peak = stats["peak_bytes_in_use"] / 1024**3
+                limit = stats["bytes_limit"] / 1024**3
+                mem_parts.append(f"{device.id}: {used:.2f}/{limit:.2f}GB (peak {peak:.2f}GB)")
+                mem_log[f"gpu{device.id}/mem_used_gb"] = used
+                mem_log[f"gpu{device.id}/mem_peak_gb"] = peak
+            pbar.write(f"Step {step}: {info_str} | mem [{', '.join(mem_parts)}]")
+            wandb.log({**reduced_info, **mem_log}, step=step)
             infos = []
         batch = next(data_iter)
 

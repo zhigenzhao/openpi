@@ -19,6 +19,9 @@ services:
       - OPENPI_DATA_HOME=/openpi_assets
       - HF_HOME=/opt/.cache/huggingface
       - IS_DOCKER=true
+      - HF_TOKEN=${HF_TOKEN}
+
+    shm_size: '16g'
 
     # Comment out this block if not running on a machine with GPUs.
     deploy:
