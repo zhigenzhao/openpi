@@ -1048,6 +1048,36 @@ _CONFIGS = [
         batch_size=64,
         num_workers=2,
     ),
+    # Full pi0 + GIM data pipeline — lets a FULL pi0 checkpoint (e.g. pi0_aloha_towel) run ZERO-SHOT
+    # through GimDualArmInputs/Outputs (same obs handling as pi05_gim_dual_tshirt). Architecture =
+    # default Pi0Config() (gemma_2b + gemma_300m, NOT LoRA, pi05=False), which matches pi0_aloha_towel.
+    # norm_stats are loaded from the checkpoint's assets/kelvinzhaozg/gim_tshirt_dagger_413/.
+    TrainConfig(
+        name="pi0_gim_dual_full",
+        model=pi0_config.Pi0Config(),
+        data=GimDualArmLeRobotDataConfig(
+            repo_id="kelvinzhaozg/gim_tshirt_dagger_413",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+    ),
+    # DEPLOYMENT config for the FINETUNED pi05 policy (trained on branch gimai-dev/openpi
+    # `feat/rrd-dataset-streaming` as `pi05_gim_dual_real_rrd`, 132 real teleop episodes). The INFERENCE
+    # pipeline is byte-identical to that training config (same repack + GimDualArmInputs/Outputs + the
+    # make_bool_mask(6,-1,6,-1) delta-action mask + pi05 quantile norm), but this uses the PLAIN LeRobot
+    # data config so .create() does NOT import the private `rrd-dataset` streaming lib (which the
+    # real_rrd config pulls in and which is unused at inference). asset_id == repo_id == "gim/dual_arm_real",
+    # so norm_stats load from <ckpt>/assets/gim/dual_arm_real/norm_stats.json (the stats the checkpoint was
+    # trained with). DEPLOY NOTES: set policy-server gripper_convention="joint" (the finetune trained on RAW
+    # grippers, NOT /-0.2 normalized) and task_label to the training prompt
+    # ("pick up all things on the table and put them into the box, then close the box.").
+    TrainConfig(
+        name="pi05_gim_dual_real_deploy",
+        model=pi0_config.Pi0Config(pi05=True),
+        data=GimDualArmLeRobotDataConfig(
+            repo_id="gim/dual_arm_real",
+            base_config=DataConfig(prompt_from_task=False),
+        ),
+    ),
     # RoboArena & PolaRiS configs.
     *roboarena_config.get_roboarena_configs(),
     *polaris_config.get_polaris_configs(),
