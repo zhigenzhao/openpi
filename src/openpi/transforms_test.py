@@ -67,6 +67,22 @@ def test_make_bool_mask():
     assert _transforms.make_bool_mask(2, 0, 2) == (True, True, True, True)
 
 
+@pytest.mark.parametrize("normalization_mode", ["zscore", "quantile"])
+def test_normalize_leaves_model_padding_unchanged(normalization_mode: str):
+    stats = _transforms.NormStats(
+        mean=np.array([1.0, 2.0]),
+        std=np.array([2.0, 4.0]),
+        q01=np.array([0.0, 1.0]),
+        q99=np.array([2.0, 5.0]),
+    )
+    data = {"state": np.array([1.0, 3.0, 0.0, 0.0])}
+
+    normalized = _transforms.Normalize({"state": stats}, use_quantiles=normalization_mode == "quantile")(data)["state"]
+
+    assert normalized.shape == (4,)
+    np.testing.assert_array_equal(normalized[2:], np.zeros(2))
+
+
 def test_tokenize_prompt():
     tokenizer = _tokenizer.PaligemmaTokenizer(max_len=12)
     transform = _transforms.TokenizePrompt(tokenizer)
